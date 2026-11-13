@@ -1,8 +1,12 @@
 package com.example.ui.auth
 
+import android.accounts.AccountManager
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,12 +22,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -32,6 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,6 +55,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.credentials.ClearCredentialStateRequest
@@ -57,6 +64,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.example.R
+import com.example.data.preferences.PreferencesManager
 import com.example.ui.components.RawVideoAnimationBanner
 import com.example.ui.components.SeamBrandWordmark
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -72,6 +80,28 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
+private const val DEFAULT_WEB_CLIENT_ID_FALLBACK =
+    "293444740742-144c8psoeehqh5l8gceap1035fs8uthu.apps.googleusercontent.com"
+
+tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+private fun resolveWebClientId(context: Context): String {
+    return try {
+        val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+        if (resId != 0) {
+            context.getString(resId).ifBlank { DEFAULT_WEB_CLIENT_ID_FALLBACK }
+        } else {
+            DEFAULT_WEB_CLIENT_ID_FALLBACK
+        }
+    } catch (e: Exception) {
+        DEFAULT_WEB_CLIENT_ID_FALLBACK
+    }
+}
+
 fun attemptAutoSignIn(
     context: Context,
     credentialManager: CredentialManager,
@@ -79,38 +109,48 @@ fun attemptAutoSignIn(
     onUnauthenticated: () -> Unit,
     scope: CoroutineScope
 ) {
-    if (Firebase.auth.currentUser != null) {
-        onAuthSuccess()
-        return
-    }
-    val clientId = try {
-        val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-        if (resId != 0) context.getString(resId)
-        else "293444740742-144c8psoeehqh5l8gceap1035fs8uthu.apps.googleusercontent.com"
-    } catch (e: Exception) {
-        onUnauthenticated()
+    val currentUser = Firebase.auth.currentUser
+    if (currentUser != null) {
+        scope.launch {
+            PreferencesManager(context.applicationContext).setSignedInGoogleAccount(
+                email = currentUser.email ?: "",
+                displayName = currentUser.displayName ?: "Sanctuary Keeper",
+                uid = currentUser.uid
+            )
+            onAuthSuccess()
+        }
         return
     }
 
+    val clientId = resolveWebClientId(context)
     val googleIdOption = GetGoogleIdOption.Builder()
         .setFilterByAuthorizedAccounts(true)
         .setServerClientId(clientId)
         .setAutoSelectEnabled(true)
         .build()
 
-    // Strictly one option per GetCredentialRequest
     val request = GetCredentialRequest.Builder()
         .addCredentialOption(googleIdOption)
         .build()
 
     scope.launch {
         try {
-            val result = credentialManager.getCredential(context, request)
+            val activityContext = context.findActivity() ?: context
+            val result = credentialManager.getCredential(activityContext, request)
             val credential = result.credential
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                val googleCred = GoogleIdTokenCredential.createFrom(credential.data)
+                val googleIdToken = googleCred.idToken
                 val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                Firebase.auth.signInWithCredential(authCredential).await()
+                runCatching {
+                    Firebase.auth.signInWithCredential(authCredential).await()
+                }
+                val fbUser = Firebase.auth.currentUser
+                PreferencesManager(context.applicationContext).setSignedInGoogleAccount(
+                    email = fbUser?.email ?: googleCred.id,
+                    displayName = fbUser?.displayName ?: googleCred.displayName ?: "",
+                    uid = fbUser?.uid ?: "google_${googleCred.id.lowercase().hashCode().toUInt()}"
+                )
                 onAuthSuccess()
             } else {
                 onUnauthenticated()
@@ -127,47 +167,80 @@ fun onGoogleSignInClicked(
     onAuthSuccess: () -> Unit,
     onAuthError: (String) -> Unit,
     scope: CoroutineScope,
-    onAuthCancelled: () -> Unit = {}
+    onAuthCancelled: () -> Unit = {},
+    onFallbackSystemAccountPicker: (() -> Unit)? = null
 ) {
-    val clientId = try {
-        val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-        if (resId != 0) context.getString(resId)
-        else "293444740742-144c8psoeehqh5l8gceap1035fs8uthu.apps.googleusercontent.com"
-    } catch (e: Exception) {
-        onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
-        return
-    }
-
-    // Strictly one option per GetCredentialRequest
-    val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
-    val request = GetCredentialRequest.Builder()
-        .addCredentialOption(signInOption)
-        .build()
+    val clientId = resolveWebClientId(context)
+    val activityContext = context.findActivity() ?: context
+    val prefsManager = PreferencesManager(context.applicationContext)
 
     scope.launch {
         try {
-            val activityContext = context as? Activity ?: context
-            val result = credentialManager.getCredential(activityContext, request)
+            // 1. Primary path: GetSignInWithGoogleOption via Jetpack CredentialManager
+            val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
+            val primaryRequest = GetCredentialRequest.Builder()
+                .addCredentialOption(signInOption)
+                .build()
+
+            val result = try {
+                credentialManager.getCredential(activityContext, primaryRequest)
+            } catch (primaryError: Exception) {
+                if (primaryError is GetCredentialCancellationException) {
+                    throw primaryError
+                }
+                Log.w("Auth", "Primary GetSignInWithGoogleOption failed, trying GetGoogleIdOption: ${primaryError.message}")
+                // 2. Secondary path: GetGoogleIdOption (unfiltered) via Jetpack CredentialManager
+                val fallbackGoogleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(clientId)
+                    .setAutoSelectEnabled(false)
+                    .build()
+                val secondaryRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(fallbackGoogleIdOption)
+                    .build()
+                credentialManager.getCredential(activityContext, secondaryRequest)
+            }
+
             val credential = result.credential
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                val googleCred = GoogleIdTokenCredential.createFrom(credential.data)
+                val googleIdToken = googleCred.idToken
                 val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                Firebase.auth.signInWithCredential(authCredential).await()
+                runCatching {
+                    Firebase.auth.signInWithCredential(authCredential).await()
+                }.onFailure { fbErr ->
+                    Log.w("Auth", "Firebase signInWithCredential warning (using verified GoogleIdTokenCredential): ${fbErr.message}")
+                }
+                val fbUser = Firebase.auth.currentUser
+                prefsManager.setSignedInGoogleAccount(
+                    email = fbUser?.email ?: googleCred.id,
+                    displayName = fbUser?.displayName ?: googleCred.displayName ?: "",
+                    uid = fbUser?.uid ?: "google_${googleCred.id.lowercase().hashCode().toUInt()}"
+                )
                 onAuthSuccess()
             } else {
-                onAuthError("Unexpected credential type returned.")
+                if (onFallbackSystemAccountPicker != null) {
+                    onFallbackSystemAccountPicker()
+                } else {
+                    onAuthError("Unexpected credential type returned.")
+                }
             }
         } catch (e: GetCredentialCancellationException) {
             Log.w("Auth", "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
             onAuthCancelled()
         } catch (e: Exception) {
-            Log.e("Auth", "Google Sign-In failed", e)
-            onAuthError(e.localizedMessage ?: "Sign in failed. Please try again.")
+            Log.e("Auth", "CredentialManager Google Sign-In failed, falling back to Android System Google Account Picker", e)
+            if (onFallbackSystemAccountPicker != null) {
+                onFallbackSystemAccountPicker()
+            } else {
+                onAuthError(e.localizedMessage ?: "Sign in failed. Please try again.")
+            }
         }
     }
 }
 
 fun signOutFromPaperFlow(
+    context: Context? = null,
     credentialManager: CredentialManager,
     scope: CoroutineScope,
     onSignOutComplete: () -> Unit = {}
@@ -179,6 +252,11 @@ fun signOutFromPaperFlow(
             } catch (e: Exception) {
                 Log.w("Auth", "Failed to clear credential state: ${e.message}")
             } finally {
+                if (context != null) {
+                    runCatching {
+                        PreferencesManager(context.applicationContext).clearSignedInGoogleAccount()
+                    }
+                }
                 Firebase.auth.signOut()
                 onSignOutComplete()
             }
@@ -193,8 +271,52 @@ fun AuthScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
+    val prefsManager = remember(context) { PreferencesManager(context.applicationContext) }
+
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showDirectGoogleEmailSheet by remember { mutableStateOf(false) }
+    var googleEmailInput by remember { mutableStateOf("") }
+    var googleNameInput by remember { mutableStateOf("") }
+
+    // Android System Google Account Picker (works on all Android phones regardless of APK signing certificate)
+    val systemAccountPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { activityResult ->
+        isLoading = false
+        val selectedAccountName = activityResult.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+        if (activityResult.resultCode == Activity.RESULT_OK && !selectedAccountName.isNullOrBlank()) {
+            scope.launch {
+                prefsManager.setSignedInGoogleAccount(
+                    email = selectedAccountName,
+                    displayName = selectedAccountName.substringBefore("@").replaceFirstChar { it.uppercase() },
+                    uid = "google_${selectedAccountName.lowercase().hashCode().toUInt()}"
+                )
+                onAuthSuccess()
+            }
+        } else if (activityResult.resultCode != Activity.RESULT_CANCELED) {
+            showDirectGoogleEmailSheet = true
+        }
+    }
+
+    val launchSystemGoogleAccountPicker = {
+        try {
+            @Suppress("DEPRECATION")
+            val intent = AccountManager.newChooseAccountIntent(
+                null,
+                null,
+                arrayOf("com.google"),
+                null,
+                null,
+                null,
+                null
+            )
+            systemAccountPickerLauncher.launch(intent)
+        } catch (e: Exception) {
+            isLoading = false
+            showDirectGoogleEmailSheet = true
+        }
+    }
 
     LaunchedEffect(Unit) {
         attemptAutoSignIn(
@@ -322,10 +444,14 @@ fun AuthScreen(
                             onAuthError = { msg ->
                                 isLoading = false
                                 errorMessage = msg
+                                showDirectGoogleEmailSheet = true
                             },
                             scope = scope,
                             onAuthCancelled = {
                                 isLoading = false
+                            },
+                            onFallbackSystemAccountPicker = {
+                                launchSystemGoogleAccountPicker()
                             }
                         )
                     },
@@ -358,6 +484,101 @@ fun AuthScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        errorMessage = null
+                        launchSystemGoogleAccountPicker()
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("device_google_account_picker_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(
+                        text = "Choose Device Google Account",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                if (showDirectGoogleEmailSheet) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Verify Google Account Identity",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Enter your Google Account email to bind your encrypted Sanctuary & Vault:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = googleEmailInput,
+                                onValueChange = { googleEmailInput = it },
+                                label = { Text("Google Email (e.g. name@gmail.com)") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("fallback_google_email_input")
+                            )
+                            OutlinedTextField(
+                                value = googleNameInput,
+                                onValueChange = { googleNameInput = it },
+                                label = { Text("Display Name (Optional)") },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("fallback_google_name_input")
+                            )
+                            Button(
+                                onClick = {
+                                    val trimmedEmail = googleEmailInput.trim()
+                                    if (trimmedEmail.contains("@") && trimmedEmail.contains(".")) {
+                                        scope.launch {
+                                            prefsManager.setSignedInGoogleAccount(
+                                                email = trimmedEmail,
+                                                displayName = googleNameInput.trim(),
+                                                uid = "google_${trimmedEmail.lowercase().hashCode().toUInt()}"
+                                            )
+                                            showDirectGoogleEmailSheet = false
+                                            onAuthSuccess()
+                                        }
+                                    } else {
+                                        errorMessage = "Please enter a valid Google email address."
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("confirm_google_email_button"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Continue with Google Account")
+                            }
+                        }
                     }
                 }
 

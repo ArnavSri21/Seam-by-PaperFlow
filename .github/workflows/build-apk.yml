@@ -130,11 +130,15 @@ jobs:
           EOF
           fi
 
-          # 5. Ensure debug.keystore exists
+          # 5. Ensure debug.keystore exists with the exact registered Firebase SHA-1 (5fdc7d27dc0457b6c2a6f3e9823c3d7ab9cfac37)
+          if [ ! -f "debug.keystore.base64" ]; then
+            cat << 'EOF' > debug.keystore.base64
+          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
+          EOF
+          fi
+
           if [ ! -f "debug.keystore" ]; then
-            if [ -f "debug.keystore.base64" ]; then
-              base64 -di debug.keystore.base64 > debug.keystore || rm -f debug.keystore
-            fi
+            tr -d ' \t\r\n' < debug.keystore.base64 | base64 -d > debug.keystore || rm -f debug.keystore
           fi
           if [ ! -f "debug.keystore" ]; then
             keytool -genkeypair -v \
@@ -148,9 +152,21 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          # 6. Ensure release keystore (my-upload-key.jks) exists
+          # 6. Ensure release keystore (my-upload-key.jks) uses the SAME registered SHA-1 key if no custom secret is provided
           if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 -di > my-upload-key.jks || rm -f my-upload-key.jks
+            echo "$RELEASE_KEYSTORE_BASE64" | tr -d ' \t\r\n' | base64 -d > my-upload-key.jks || rm -f my-upload-key.jks
+          fi
+          if [ ! -f "my-upload-key.jks" ]; then
+            keytool -importkeystore \
+              -srckeystore debug.keystore \
+              -srcstorepass android \
+              -srcalias androiddebugkey \
+              -srckeypass android \
+              -destkeystore my-upload-key.jks \
+              -deststorepass paperflowrelease \
+              -destkeypass paperflowrelease \
+              -destalias upload \
+              -noprompt || true
           fi
           if [ ! -f "my-upload-key.jks" ]; then
             keytool -genkeypair -v \

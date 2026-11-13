@@ -39,7 +39,10 @@ data class UserVaultPreferences(
     val isCloudBackupEnabled: Boolean = false, // Privacy requirement: Cloud backup disabled by default!
     val syncIntervalSeconds: Int = 60,
     val lastSyncTimestampMillis: Long = 0L,
-    val lastSanctuaryInsight: String = "Seam by PaperFlow — Your memories and reflections live quietly in private on-device storage."
+    val lastSanctuaryInsight: String = "Seam by PaperFlow — Your memories and reflections live quietly in private on-device storage.",
+    val signedInGoogleEmail: String = "",
+    val signedInGoogleName: String = "",
+    val signedInGoogleUid: String = ""
 )
 
 class PreferencesManager(private val context: Context) {
@@ -60,6 +63,9 @@ class PreferencesManager(private val context: Context) {
         val SYNC_INTERVAL_SEC = intPreferencesKey("sync_interval_sec")
         val LAST_SYNC_MILLIS = longPreferencesKey("last_sync_millis")
         val LAST_SANCTUARY_INSIGHT = stringPreferencesKey("last_sanctuary_insight")
+        val SIGNED_IN_GOOGLE_EMAIL = stringPreferencesKey("signed_in_google_email")
+        val SIGNED_IN_GOOGLE_NAME = stringPreferencesKey("signed_in_google_name")
+        val SIGNED_IN_GOOGLE_UID = stringPreferencesKey("signed_in_google_uid")
     }
 
     val preferencesFlow: Flow<UserVaultPreferences> = context.dataStore.data.map { prefs ->
@@ -90,8 +96,34 @@ class PreferencesManager(private val context: Context) {
             syncIntervalSeconds = prefs[Keys.SYNC_INTERVAL_SEC] ?: 60,
             lastSyncTimestampMillis = prefs[Keys.LAST_SYNC_MILLIS] ?: 0L,
             lastSanctuaryInsight = prefs[Keys.LAST_SANCTUARY_INSIGHT]
-                ?: "Seam by PaperFlow — Your memories and reflections live quietly in private on-device storage."
+                ?: "Seam by PaperFlow — Your memories and reflections live quietly in private on-device storage.",
+            signedInGoogleEmail = prefs[Keys.SIGNED_IN_GOOGLE_EMAIL] ?: "",
+            signedInGoogleName = prefs[Keys.SIGNED_IN_GOOGLE_NAME] ?: "",
+            signedInGoogleUid = prefs[Keys.SIGNED_IN_GOOGLE_UID] ?: ""
         )
+    }
+
+    suspend fun setSignedInGoogleAccount(email: String, displayName: String, uid: String) {
+        val normalizedEmail = email.trim()
+        val resolvedName = displayName.trim().ifBlank {
+            normalizedEmail.substringBefore("@").replaceFirstChar { it.uppercase() }.ifBlank { "Sanctuary Keeper" }
+        }
+        val resolvedUid = uid.trim().ifBlank {
+            "google_${normalizedEmail.lowercase().hashCode().toUInt()}"
+        }
+        context.dataStore.edit {
+            it[Keys.SIGNED_IN_GOOGLE_EMAIL] = normalizedEmail
+            it[Keys.SIGNED_IN_GOOGLE_NAME] = resolvedName
+            it[Keys.SIGNED_IN_GOOGLE_UID] = resolvedUid
+        }
+    }
+
+    suspend fun clearSignedInGoogleAccount() {
+        context.dataStore.edit {
+            it.remove(Keys.SIGNED_IN_GOOGLE_EMAIL)
+            it.remove(Keys.SIGNED_IN_GOOGLE_NAME)
+            it.remove(Keys.SIGNED_IN_GOOGLE_UID)
+        }
     }
 
     suspend fun setThemeMode(mode: ThemeModePreference) {

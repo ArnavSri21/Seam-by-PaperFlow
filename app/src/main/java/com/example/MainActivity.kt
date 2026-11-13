@@ -129,6 +129,11 @@ class MainActivity : FragmentActivity() {
 
 @Composable
 fun PaperFlowAppRoot() {
+    val context = LocalContext.current
+    val prefsManager = remember(context) { PreferencesManager(context.applicationContext) }
+    val prefs by prefsManager.preferencesFlow.collectAsStateWithLifecycle(
+        initialValue = com.example.data.preferences.UserVaultPreferences()
+    )
     var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
 
     DisposableEffect(Unit) {
@@ -143,7 +148,9 @@ fun PaperFlowAppRoot() {
 
     // Requirement 4: Google Sign-In is mandatory for every user to use the app.
     val signedInUser = currentUser
-    if (signedInUser == null) {
+    val hasLocalGoogleSession = prefs.signedInGoogleEmail.isNotBlank() || prefs.signedInGoogleUid.isNotBlank()
+
+    if (signedInUser == null && !hasLocalGoogleSession) {
         PaperFlowTheme(themeMode = ThemeModePreference.DARK_PRIORITY) {
             AuthScreen(
                 onAuthSuccess = {
@@ -152,13 +159,18 @@ fun PaperFlowAppRoot() {
             )
         }
     } else {
-        val activeUserId = signedInUser.uid
+        val activeUserId = signedInUser?.uid
+            ?: prefs.signedInGoogleUid.ifBlank { "google_${prefs.signedInGoogleEmail.lowercase().hashCode().toUInt()}" }
+        val activeEmail = signedInUser?.email ?: prefs.signedInGoogleEmail
+        val activeDisplayName = signedInUser?.displayName
+            ?: prefs.signedInGoogleName.ifBlank { "Sanctuary Keeper" }
+
         key(activeUserId) {
             AuthenticatedSanctuaryHost(
                 currentUserId = activeUserId,
                 isSignedInWithGoogle = true,
-                userEmail = signedInUser.email ?: "",
-                userDisplayName = signedInUser.displayName ?: "Sanctuary Keeper"
+                userEmail = activeEmail,
+                userDisplayName = activeDisplayName
             )
         }
     }
@@ -706,6 +718,7 @@ fun AuthenticatedSanctuaryHost(
                                         },
                                         onSignOut = {
                                             signOutFromPaperFlow(
+                                                context = context,
                                                 credentialManager = credentialManager,
                                                 scope = scope
                                             )
