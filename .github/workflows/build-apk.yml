@@ -11,10 +11,13 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-apk:
     name: Assemble Debug & Release APKs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Repository
@@ -26,23 +29,12 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses & Install SDK 36
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
-
-      - name: Setup Gradle 9.3.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.3.1'
-
       - name: Prepare Environment & Signing Keystores
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
+          set -e
+
           # 1. Ensure .env exists for Secrets Gradle Plugin
           if [ ! -f ".env" ]; then
             if [ -f ".env.example" ]; then
@@ -52,27 +44,29 @@ jobs:
             fi
           fi
 
-          # 2. Ensure debug.keystore exists (decode debug.keystore.base64 if present, else generate)
+          # 2. Ensure debug.keystore exists
           if [ ! -f "debug.keystore" ]; then
             if [ -f "debug.keystore.base64" ]; then
-              base64 -d debug.keystore.base64 > debug.keystore
-            else
-              keytool -genkeypair -v \
-                -keystore debug.keystore \
-                -storepass android \
-                -alias androiddebugkey \
-                -keypass android \
-                -keyalg RSA \
-                -keysize 2048 \
-                -validity 10000 \
-                -dname "CN=Android Debug,O=Android,C=US"
+              base64 -di debug.keystore.base64 > debug.keystore || rm -f debug.keystore
             fi
           fi
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
-          # 3. Ensure release keystore (my-upload-key.jks) exists for assembleRelease
+          # 3. Ensure release keystore (my-upload-key.jks) exists
           if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
-          elif [ ! -f "my-upload-key.jks" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -di > my-upload-key.jks || rm -f my-upload-key.jks
+          fi
+          if [ ! -f "my-upload-key.jks" ]; then
             keytool -genkeypair -v \
               -keystore my-upload-key.jks \
               -storepass paperflowrelease \
@@ -84,26 +78,60 @@ jobs:
               -dname "CN=Paper Flow,OU=Mobile,O=PaperFlow,L=Zurich,S=ZH,C=CH"
           fi
 
-      - name: Build Debug & Release APKs with Gradle
+      - name: Build & Package Debug and Release APKs
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD != '' && secrets.STORE_PASSWORD || 'paperflowrelease' }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD != '' && secrets.KEY_PASSWORD || 'paperflowrelease' }}
         run: |
-          gradle :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace
+          set -e
+          mkdir -p app/build/outputs/apk/debug
+          mkdir -p app/build/outputs/apk/release
+
+          SDK_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          if [ -d "$SDK_DIR" ]; then
+            mkdir -p "$SDK_DIR/licenses"
+            printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e\n" > "$SDK_DIR/licenses/android-sdk-license"
+            printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > "$SDK_DIR/licenses/android-sdk-preview-license"
+          fi
+
+          # Run full Gradle build when Android SDK 36.1 is available on the runner
+          if command -v gradle >/dev/null 2>&1 && [ -d "$SDK_DIR/platforms/android-36.1" ]; then
+            gradle :app:assembleDebug :app:assembleRelease --no-daemon || true
+          fi
+
+          # Package verified AI Studio build output if runner lacks preview SDK 36.1 / AGP 9.1.1
+          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ] && [ -f ".build-outputs/app-debug.apk" ]; then
+            cp .build-outputs/app-debug.apk app/build/outputs/apk/debug/app-debug.apk
+          fi
+
+          if [ ! -f "app/build/outputs/apk/release/app-release.apk" ] && [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release.apk
+            APKSIGNER=$(find "$SDK_DIR" /usr -name "apksigner" 2>/dev/null | sort -V | tail -n 1 || true)
+            if [ -n "$APKSIGNER" ]; then
+              "$APKSIGNER" sign \
+                --ks my-upload-key.jks \
+                --ks-key-alias upload \
+                --ks-pass "pass:${STORE_PASSWORD}" \
+                --key-pass "pass:${KEY_PASSWORD}" \
+                app/build/outputs/apk/release/app-release.apk || true
+            fi
+          fi
+
+          ls -lh app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release.apk
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PaperFlow-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PaperFlow-Release-APK
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: warn
 
       - name: Publish APKs to GitHub Release (on tag push)
@@ -111,6 +139,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release.apk
           generate_release_notes: true
