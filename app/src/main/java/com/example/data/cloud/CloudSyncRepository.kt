@@ -21,7 +21,11 @@ class CloudSyncRepository(private val db: FirebaseFirestore) {
 
     constructor(context: Context) : this(
         FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
+            context.applicationContext.let { appContext ->
+                val resId = appContext.resources.getIdentifier("firestore_database_id", "string", appContext.packageName)
+                if (resId != 0) appContext.getString(resId)
+                else "ai-studio-android-paperflo-1276240a-2ce1-4e09-a726-1b0f1106089d"
+            }
         )
     )
 

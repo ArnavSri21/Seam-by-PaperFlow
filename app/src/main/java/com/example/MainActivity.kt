@@ -183,7 +183,8 @@ fun AuthenticatedSanctuaryHost(
                 val app = checkNotNull(this[APPLICATION_KEY]) {
                     "APPLICATION_KEY missing from CreationExtras"
                 }
-                val databaseId = app.getString(R.string.firestore_database_id)
+                val dbResId = app.resources.getIdentifier("firestore_database_id", "string", app.packageName)
+                val databaseId = if (dbResId != 0) app.getString(dbResId) else "ai-studio-android-paperflo-1276240a-2ce1-4e09-a726-1b0f1106089d"
                 val firestore = FirebaseFirestore.getInstance(databaseId)
                 val roomDb = PaperFlowDatabase.getInstance(app)
                 val isolatedVaultDb = IsolatedVaultDatabase.getInstance(app)
