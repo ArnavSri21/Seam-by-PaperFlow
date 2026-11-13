@@ -433,7 +433,38 @@ fun GalleryVaultScreen(
                 }
             }
 
-            // 5. Sticky Month/Year Timeline Sections (matching Page 5 left screenshot)
+            // 5. Launch-Ready Empty State or Sticky Month/Year Timeline Sections
+            if (visibleMemories.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(SeamCharcoal)
+                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
+                            .padding(24.dp)
+                            .testTag("gallery_empty_state_card"),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (galleryEntries.isEmpty()) "No memories yet" else "No matching memories",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = SeamWarmIvory,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (galleryEntries.isEmpty()) {
+                                "Your private gallery is clean and ready. Import your first photo below to store it securely inside app-private phone storage."
+                            } else {
+                                "Try clearing your search or album filter to see all saved memories."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = SeamMutedGrey
+                        )
+                    }
+                }
+            }
+
             groupedByMonth.forEach { (monthHeading, monthItems) ->
                 stickyHeader(key = "header_$monthHeading") {
                     Box(

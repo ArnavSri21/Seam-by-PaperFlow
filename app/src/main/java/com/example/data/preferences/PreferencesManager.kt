@@ -28,7 +28,9 @@ data class UserVaultPreferences(
     val themeMode: ThemeModePreference = ThemeModePreference.DARK_PRIORITY,
     val reducedMotionEnabled: Boolean = false,
     val isBiometricLockEnabled: Boolean = true,
-    val vaultPasscode: String = "2026",
+    val isVaultPinConfigured: Boolean = false,
+    val vaultPasscode: String = "",
+    val isAutofillOverlayEnabled: Boolean = true,
     val revealTimeoutSeconds: Int = 15,
     val clipboardAutoClearSeconds: Int = 30,
     val aiExecutionMode: AiExecutionMode = AiExecutionMode.LOCAL_ON_DEVICE,
@@ -46,7 +48,9 @@ class PreferencesManager(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
+        val VAULT_PIN_CONFIGURED = booleanPreferencesKey("vault_pin_configured")
         val VAULT_PASSCODE = stringPreferencesKey("vault_passcode")
+        val AUTOFILL_OVERLAY_ENABLED = booleanPreferencesKey("autofill_overlay_enabled")
         val REVEAL_TIMEOUT_SEC = intPreferencesKey("reveal_timeout_sec")
         val CLIPBOARD_CLEAR_SEC = intPreferencesKey("clipboard_clear_sec")
         val AI_EXECUTION_MODE = stringPreferencesKey("ai_execution_mode")
@@ -67,11 +71,16 @@ class PreferencesManager(private val context: Context) {
         val aiMode = runCatching { AiExecutionMode.valueOf(aiModeStr) }
             .getOrDefault(AiExecutionMode.LOCAL_ON_DEVICE)
 
+        val savedPin = prefs[Keys.VAULT_PASSCODE] ?: ""
+        val pinConfigured = prefs[Keys.VAULT_PIN_CONFIGURED] ?: savedPin.isNotBlank()
+
         UserVaultPreferences(
             themeMode = mode,
             reducedMotionEnabled = prefs[Keys.REDUCED_MOTION] ?: false,
             isBiometricLockEnabled = prefs[Keys.BIOMETRIC_ENABLED] ?: true,
-            vaultPasscode = prefs[Keys.VAULT_PASSCODE] ?: "2026",
+            isVaultPinConfigured = pinConfigured,
+            vaultPasscode = savedPin,
+            isAutofillOverlayEnabled = prefs[Keys.AUTOFILL_OVERLAY_ENABLED] ?: true,
             revealTimeoutSeconds = prefs[Keys.REVEAL_TIMEOUT_SEC] ?: 15,
             clipboardAutoClearSeconds = prefs[Keys.CLIPBOARD_CLEAR_SEC] ?: 30,
             aiExecutionMode = aiMode,
@@ -99,8 +108,15 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setVaultPasscode(passcode: String) {
         if (passcode.length == 4 && passcode.all { it.isDigit() }) {
-            context.dataStore.edit { it[Keys.VAULT_PASSCODE] = passcode }
+            context.dataStore.edit {
+                it[Keys.VAULT_PASSCODE] = passcode
+                it[Keys.VAULT_PIN_CONFIGURED] = true
+            }
         }
+    }
+
+    suspend fun setAutofillOverlayEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AUTOFILL_OVERLAY_ENABLED] = enabled }
     }
 
     suspend fun setAiExecutionMode(mode: AiExecutionMode, cloudConsentGranted: Boolean = false) {

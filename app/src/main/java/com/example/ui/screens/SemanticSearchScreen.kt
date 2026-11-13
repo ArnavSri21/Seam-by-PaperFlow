@@ -110,7 +110,7 @@ fun SemanticSearchScreen(
     // 180ms debounced typing feedback per Section 09 Motion Specification (150–250 ms)
     var localTypingQuery by remember(searchFilter.query) { mutableStateOf(searchFilter.query) }
     var isDebouncing by remember { mutableStateOf(false) }
-    val recentSearches = remember { mutableStateListOf("midnight stillness", "morning tea", "ocean constellation") }
+    val recentSearches = remember { mutableStateListOf<String>() }
     var showCloudAiSearchConfirm by remember { mutableStateOf(false) }
     var showExtendedTagChips by remember { mutableStateOf(false) }
 

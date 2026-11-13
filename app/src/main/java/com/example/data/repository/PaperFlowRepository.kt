@@ -120,154 +120,23 @@ class PaperFlowRepository(
         storageManager.copyPickedUriToPrivateStorage(uri)
 
     /**
-     * Seeds initial mindful entries into local phone storage on first run so the app works
-     * 100% offline immediately without requiring Google sign-in.
+     * Launch-ready initialization: never seeds demo/preloaded notes, gallery items, or passwords.
+     * Also cleans up any legacy `seed_` entries or sample artwork files if present from earlier builds.
      */
     suspend fun ensureInitialSanctuarySeeded(userId: String) = withContext(Dispatchers.IO) {
+        storageManager.cleanupPreloadedSampleFiles()
         val existingSanctuary = vaultDao.getEntriesOnce()
-        if (existingSanctuary.isEmpty()) {
-            val artPath1 = storageManager.ensureMindfulArtworkFile(
-                fileName = "seam_constellation_01.jpg",
-                primaryColor = 0xFF0A0E17.toInt(),
-                secondaryColor = 0xFF161F30.toInt(),
-                accentColor = 0xFFB8B5FF.toInt(),
-                styleIndex = 1
-            )
-            val artPath2 = storageManager.ensureMindfulArtworkFile(
-                fileName = "seam_editorial_solstice_02.jpg",
-                primaryColor = 0xFF121016.toInt(),
-                secondaryColor = 0xFF282332.toInt(),
-                accentColor = 0xFFE5C185.toInt(),
-                styleIndex = 2
-            )
+        existingSanctuary
+            .filter { it.cloudId.startsWith("seed_note_") || it.cloudId.startsWith("seed_gallery_") }
+            .forEach { vaultDao.deleteEntryById(it.id) }
 
-            val now = System.currentTimeMillis()
-            val sampleSanctuaryEntries = listOf(
-                VaultEntryEntity(
-                    cloudId = "seed_note_${UUID.randomUUID().toString().take(8)}",
-                    userId = userId,
-                    itemType = VaultItemType.NOTE.name,
-                    title = "Midnight Stillness & Creative Clarity",
-                    primaryContent = "# Midnight Reflection\nWhen the room settles after midnight, ideas stop competing for attention and begin to flow like ink on warm paper.\n\n- Breathe before opening the editor\n- Keep personal reflections local-first",
-                    secretValue = "Markdown • 42 words",
-                    websiteOrLocation = "Home Study • 01:15 AM",
-                    folderOrAlbum = "Night Journal",
-                    mediaPath = "raw://liquid_reflection",
-                    ocrExtractedText = "Lectures Swiss National Museum Zürich HGK Basel",
-                    category = "Mindfulness",
-                    moodTag = "Serene",
-                    aiSummary = "A late-night Markdown reflection on quietude, breathwork, and local-first creative focus.",
-                    aiKeywords = "midnight, stillness, calm, meditation, peace, insomnia, night, focus, writing, journal, creativity, breath, tranquil, silence",
-                    isFavorite = true,
-                    isBiometricProtected = false,
-                    isAnalyzed = true,
-                    isCloudSynced = false,
-                    createdAtMillis = now - 86_400_000L * 2,
-                    updatedAtMillis = now - 86_400_000L * 2
-                ),
-                VaultEntryEntity(
-                    cloudId = "seed_note_${UUID.randomUUID().toString().take(8)}",
-                    userId = userId,
-                    itemType = VaultItemType.NOTE.name,
-                    title = "Architecture of a Slower Morning",
-                    primaryContent = "Replaced the morning scroll with twenty minutes of tea, sketching concentric wire rings, and writing three calm intentions.",
-                    secretValue = "Markdown • 26 words",
-                    websiteOrLocation = "Sunroom Terrace",
-                    folderOrAlbum = "Daily Rituals",
-                    mediaPath = "",
-                    ocrExtractedText = "",
-                    category = "Gratitude",
-                    moodTag = "Grounded",
-                    aiSummary = "Establishing an intentional morning ritual centered on tea, sketching, and digital minimalism.",
-                    aiKeywords = "morning, routine, ritual, tea, habit, digital detox, intention, gratitude, slow living, mindfulness, breakfast, peace",
-                    isFavorite = false,
-                    isBiometricProtected = false,
-                    isAnalyzed = true,
-                    isCloudSynced = false,
-                    createdAtMillis = now - 86_400_000L,
-                    updatedAtMillis = now - 86_400_000L
-                ),
-                VaultEntryEntity(
-                    cloudId = "seed_gallery_${UUID.randomUUID().toString().take(8)}",
-                    userId = userId,
-                    itemType = VaultItemType.GALLERY.name,
-                    title = "Cerulean Tide & Orbital Constellation",
-                    primaryContent = "Captured the feeling of ocean ripples converging under moonlight. Stored automatically in app-private storage.",
-                    secretValue = "900×700px • ISO 400 • 35mm f/1.8",
-                    websiteOrLocation = "Pacific Coastline",
-                    folderOrAlbum = "Coastal Archive",
-                    mediaPath = artPath1,
-                    ocrExtractedText = "900×700px • On-Device Indexed (Cerulean Tide)",
-                    category = "Nature",
-                    moodTag = "Luminous",
-                    aiSummary = "Visual study of deep ocean blues and concentric harmonic rings evoking coastal calm.",
-                    aiKeywords = "ocean, sea, water, waves, coast, blue, moonlight, tide, beach, horizon, photography, visual, memory, calm, nature",
-                    isFavorite = true,
-                    isBiometricProtected = false,
-                    isAnalyzed = true,
-                    isCloudSynced = false,
-                    createdAtMillis = now - 43_200_000L,
-                    updatedAtMillis = now - 43_200_000L
-                ),
-                VaultEntryEntity(
-                    cloudId = "seed_gallery_${UUID.randomUUID().toString().take(8)}",
-                    userId = userId,
-                    itemType = VaultItemType.GALLERY.name,
-                    title = "Zürich Monochrome Exhibition Index",
-                    primaryContent = "Warm parchment light intersecting dark stone textures and Swiss typographic posters.",
-                    secretValue = "900×700px • Golden Hour Archive",
-                    websiteOrLocation = "Zürich Design Pavilion",
-                    folderOrAlbum = "Exhibitions",
-                    mediaPath = artPath2,
-                    ocrExtractedText = "Swiss National Museum Zürich 7. Oct HGK Basel",
-                    category = "Architecture",
-                    moodTag = "Contemplative",
-                    aiSummary = "Editorial monochrome exhibition study inspired by Swiss museum typography and twilight geometry.",
-                    aiKeywords = "sunset, autumn, gold, amber, architecture, design, zürich, basel, geometry, warm, light, dusk, art, gallery, photo",
-                    isFavorite = false,
-                    isBiometricProtected = false,
-                    isAnalyzed = true,
-                    isCloudSynced = false,
-                    createdAtMillis = now - 21_600_000L,
-                    updatedAtMillis = now - 21_600_000L
-                )
-            )
-            sampleSanctuaryEntries.forEach { vaultDao.insertEntry(it) }
-            writeLocalAutoSnapshot(userId)
-        }
-
-        // Seed Isolated Password Vault (Separate DB boundary, Keystore AES-GCM encrypted)
         val existingCredentials = isolatedVaultDao.getAllCredentialsOnce()
-        if (existingCredentials.isEmpty()) {
-            val now = System.currentTimeMillis()
-            val pass1 = "Seam#Obsidian!9942-Key"
-            val pass2 = "Zürich$7721-PaperFlow*"
-            val sampleCredentials = listOf(
-                VaultCredentialEntity(
-                    serviceTitle = "GitHub Production Signing Key",
-                    accountUsername = "architect@paperflow.dev",
-                    encryptedPassword = keystoreCrypto.encryptSecret(pass1),
-                    encryptedNotes = keystoreCrypto.encryptSecret("Hardware security key backup token stored offline."),
-                    domainOrUrl = "https://github.com/settings/keys",
-                    category = "Developer",
-                    reuseFingerprint = keystoreCrypto.computeLocalReuseFingerprint(pass1),
-                    createdAtMillis = now - 14_400_000L,
-                    updatedAtMillis = now - 14_400_000L
-                ),
-                VaultCredentialEntity(
-                    serviceTitle = "Zürich Private Archive Portal",
-                    accountUsername = "seam_keeper_8841",
-                    encryptedPassword = keystoreCrypto.encryptSecret(pass2),
-                    encryptedNotes = keystoreCrypto.encryptSecret("Primary archival vault credential."),
-                    domainOrUrl = "https://archive.paperflow.ch",
-                    category = "Archival",
-                    reuseFingerprint = keystoreCrypto.computeLocalReuseFingerprint(pass2),
-                    createdAtMillis = now - 7_200_000L,
-                    updatedAtMillis = now - 7_200_000L
-                )
-            )
-            sampleCredentials.forEach { isolatedVaultDao.insertCredential(it) }
-        }
+        existingCredentials
+            .filter {
+                it.serviceTitle == "GitHub Production Signing Key" ||
+                    it.serviceTitle == "Zürich Private Archive Portal"
+            }
+            .forEach { isolatedVaultDao.deleteCredentialById(it.id) }
     }
 
     suspend fun saveSanctuaryEntry(

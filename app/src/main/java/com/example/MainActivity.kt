@@ -1,11 +1,13 @@
 package com.example
 
+import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.view.autofill.AutofillManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -92,6 +94,8 @@ import com.example.ui.screens.SettingsAndSyncScreen
 import com.example.ui.screens.VaultCredentialEditorDialog
 import com.example.ui.screens.VaultEntryEditorDialog
 import com.example.ui.security.BiometricGateOverlay
+import com.example.ui.security.DeviceAutofillPermissionRequestDialog
+import com.example.ui.security.FirstTimeVaultPinSetupScreen
 import com.example.ui.theme.PaperFlowTheme
 import com.example.ui.theme.SeamBorderSubtle
 import com.example.ui.theme.SeamCharcoal
@@ -108,7 +112,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -126,7 +130,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PaperFlowAppRoot() {
     var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
-    var isOfflineSanctuaryActive by remember { mutableStateOf(true) }
 
     DisposableEffect(Unit) {
         val listener = FirebaseAuth.AuthStateListener { auth ->
@@ -138,29 +141,24 @@ fun PaperFlowAppRoot() {
         }
     }
 
-    if (currentUser == null && !isOfflineSanctuaryActive) {
+    // Requirement 4: Google Sign-In is mandatory for every user to use the app.
+    val signedInUser = currentUser
+    if (signedInUser == null) {
         PaperFlowTheme(themeMode = ThemeModePreference.DARK_PRIORITY) {
             AuthScreen(
                 onAuthSuccess = {
                     currentUser = Firebase.auth.currentUser
-                },
-                onContinueOffline = {
-                    isOfflineSanctuaryActive = true
                 }
             )
         }
     } else {
-        val activeUserId = currentUser?.uid ?: "local_offline_keeper"
-        val isSignedInWithGoogle = currentUser != null
+        val activeUserId = signedInUser.uid
         key(activeUserId) {
             AuthenticatedSanctuaryHost(
                 currentUserId = activeUserId,
-                isSignedInWithGoogle = isSignedInWithGoogle,
-                userEmail = currentUser?.email ?: "",
-                userDisplayName = currentUser?.displayName ?: "Local Sanctuary Keeper",
-                onShowAuthScreen = {
-                    isOfflineSanctuaryActive = false
-                }
+                isSignedInWithGoogle = true,
+                userEmail = signedInUser.email ?: "",
+                userDisplayName = signedInUser.displayName ?: "Sanctuary Keeper"
             )
         }
     }
@@ -214,6 +212,8 @@ fun AuthenticatedSanctuaryHost(
     )
 
     val preferences by viewModel.preferences.collectAsStateWithLifecycle()
+    val isAppEntryAuthenticated by viewModel.isAppEntryAuthenticated.collectAsStateWithLifecycle()
+    val isVaultTabAuthenticated by viewModel.isVaultTabAuthenticated.collectAsStateWithLifecycle()
     val isBiometricUnlocked by viewModel.isBiometricUnlocked.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
@@ -234,16 +234,90 @@ fun AuthenticatedSanctuaryHost(
     var sanctuaryEditorState by remember { mutableStateOf<Pair<VaultItemType, VaultEntryEntity?>?>(null) }
     var credentialEditorState by remember { mutableStateOf<Pair<Boolean, VaultCredentialEntity?>>(false to null) }
 
+    // Ask the Android device for Autofill & Auto-Save Password permission if not already enabled
+    var showAutofillPermissionPrompt by remember(context) {
+        val alreadyGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val afm = context.getSystemService(AutofillManager::class.java)
+            afm?.hasEnabledAutofillServices() == true
+        } else {
+            true
+        }
+        mutableStateOf(!alreadyGranted)
+    }
+
     // BackHandler on secondary tabs returns smoothly to Home
     BackHandler(enabled = currentTab != PaperFlowTab.SANCTUARY) {
         viewModel.selectTab(PaperFlowTab.SANCTUARY)
     }
 
     PaperFlowTheme(themeMode = preferences.themeMode) {
+        // Requirement 5: The PIN for Vault is set at the time of Google Sign-In ONLY ONCE.
+        if (!preferences.isVaultPinConfigured) {
+            FirstTimeVaultPinSetupScreen(
+                userDisplayName = userDisplayName,
+                userEmail = userEmail,
+                onPinCreated = { newPin ->
+                    viewModel.updateVaultPasscode(newPin)
+                }
+            )
+            return@PaperFlowTheme
+        }
+
+        // Requirement 1: Secure application entry with Android device BiometricPrompt (or PIN-only on devices without a biometric sensor)
+        if (!isAppEntryAuthenticated) {
+            BiometricGateOverlay(
+                expectedPasscode = preferences.vaultPasscode,
+                userDisplayName = userDisplayName,
+                gateTitle = "APPLICATION ENTRY LOCK",
+                gateSubtitle = "Authenticate with your Android device to access your personal reflections, memories, and passwords",
+                autoTriggerBiometricOnLaunch = true,
+                onUnlocked = {
+                    viewModel.markAppEntryAuthenticated()
+                }
+            )
+            return@PaperFlowTheme
+        }
+
+        // Ask the Android device for permission to auto-save passwords and autofill them across apps
+        if (showAutofillPermissionPrompt) {
+            DeviceAutofillPermissionRequestDialog(
+                onDismiss = {
+                    showAutofillPermissionPrompt = false
+                },
+                onPermissionResult = { granted ->
+                    showAutofillPermissionPrompt = false
+                    if (granted) {
+                        viewModel.showBannerMessage("Android Autofill & Auto-Save Password permission granted.")
+                    }
+                }
+            )
+        }
+
+        // Requirement 3: Biometric authentication is required when tapping Vault EVERY TIME.
+        if (currentTab == PaperFlowTab.PASSWORDS && !isVaultTabAuthenticated) {
+            BiometricGateOverlay(
+                expectedPasscode = preferences.vaultPasscode,
+                userDisplayName = userDisplayName,
+                gateTitle = "VAULT ACCESS BIOMETRIC LOCK",
+                gateSubtitle = "BiometricPrompt authentication is required every time you open the Password Vault",
+                autoTriggerBiometricOnLaunch = true,
+                onUnlocked = {
+                    viewModel.markVaultTabAuthenticated()
+                },
+                onCancel = {
+                    viewModel.selectTab(PaperFlowTab.SANCTUARY)
+                }
+            )
+            return@PaperFlowTheme
+        }
+
         if (showBiometricPromptModal) {
             BiometricGateOverlay(
                 expectedPasscode = preferences.vaultPasscode,
                 userDisplayName = userDisplayName,
+                gateTitle = "CREDENTIAL REVEAL BIOMETRIC LOCK",
+                gateSubtitle = "Verify with BiometricPrompt to reveal or copy this encrypted credential",
+                autoTriggerBiometricOnLaunch = true,
                 onUnlocked = {
                     viewModel.markBiometricUnlocked()
                     showBiometricPromptModal = false
@@ -251,6 +325,10 @@ fun AuthenticatedSanctuaryHost(
                         viewModel.toggleCredentialRevealWithTimeout(credId)
                         pendingRevealCredentialId = null
                     }
+                },
+                onCancel = {
+                    showBiometricPromptModal = false
+                    pendingRevealCredentialId = null
                 }
             )
             return@PaperFlowTheme
@@ -500,7 +578,9 @@ fun AuthenticatedSanctuaryHost(
                                         credentials = vaultCredentials,
                                         revealedCountdowns = revealedPasswordCountdowns,
                                         clipboardClearCountdown = clipboardClearCountdown,
-                                        isVaultSessionUnlocked = !preferences.isBiometricLockEnabled || isBiometricUnlocked,
+                                        expectedPasscode = preferences.vaultPasscode,
+                                        isVaultSessionUnlocked = isVaultTabAuthenticated && (!preferences.isBiometricLockEnabled || isBiometricUnlocked),
+                                        isAutofillOverlayEnabled = preferences.isAutofillOverlayEnabled,
                                         reducedMotion = preferences.reducedMotionEnabled,
                                         onRequestBiometricUnlock = {
                                             showBiometricPromptModal = true
@@ -523,6 +603,17 @@ fun AuthenticatedSanctuaryHost(
                                         },
                                         onOpenNewCredentialDialog = {
                                             credentialEditorState = true to null
+                                        },
+                                        onSaveQuickAutofillCredential = { serviceTitle, accountUsername, rawPassword, domainOrUrl ->
+                                            viewModel.saveVaultCredential(
+                                                existingId = null,
+                                                serviceTitle = serviceTitle,
+                                                accountUsername = accountUsername,
+                                                rawPassword = rawPassword,
+                                                rawNotes = "Saved via Seam Autofill Overlay",
+                                                domainOrUrl = domainOrUrl,
+                                                category = "Autofill"
+                                            )
                                         },
                                         onEditCredential = { cred ->
                                             if (preferences.isBiometricLockEnabled && !isBiometricUnlocked) {
@@ -595,13 +686,13 @@ fun AuthenticatedSanctuaryHost(
                                         },
                                         onClearAllDerivedAiInsights = { viewModel.clearAllDerivedAiInsights() },
                                         onSetBiometricEnabled = { viewModel.setBiometricLockEnabled(it) },
+                                        onSetAutofillOverlayEnabled = { viewModel.setAutofillOverlayEnabled(it) },
                                         onUpdatePasscode = { viewModel.updateVaultPasscode(it) },
                                         onSetBatterySaverSyncOnly = { viewModel.setBatterySaverSyncOnly(it) },
                                         onSetCloudBackupEnabled = { viewModel.setCloudBackupEnabled(it) },
                                         onTriggerImmediateSync = { viewModel.triggerImmediateBackgroundSyncAndAi() },
                                         onLockSanctuaryNow = {
-                                            viewModel.lockVaultNow()
-                                            viewModel.selectTab(PaperFlowTab.PASSWORDS)
+                                            viewModel.lockAppEntryNow()
                                         },
                                         onSignInWithGoogle = {
                                             onGoogleSignInClicked(

@@ -52,7 +52,7 @@ interface IsolatedVaultDao {
     suspend fun deleteCredentialById(id: Long)
 }
 
-@Database(entities = [VaultCredentialEntity::class], version = 1, exportSchema = false)
+@Database(entities = [VaultCredentialEntity::class], version = 2, exportSchema = false)
 abstract class IsolatedVaultDatabase : RoomDatabase() {
     abstract fun isolatedVaultDao(): IsolatedVaultDao
 

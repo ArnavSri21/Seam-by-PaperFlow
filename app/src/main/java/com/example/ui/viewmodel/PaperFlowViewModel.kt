@@ -74,7 +74,15 @@ class PaperFlowViewModel(
     private val _currentTab = MutableStateFlow(PaperFlowTab.SANCTUARY)
     val currentTab: StateFlow<PaperFlowTab> = _currentTab.asStateFlow()
 
-    // Dedicated Biometric / PIN Gate specifically for the Password Vault
+    // Requirement 1: BiometricPrompt authentication required at application entry before accessing reflections & passwords
+    private val _isAppEntryAuthenticated = MutableStateFlow(false)
+    val isAppEntryAuthenticated: StateFlow<Boolean> = _isAppEntryAuthenticated.asStateFlow()
+
+    // Requirement 3: Biometric authentication required EVERY TIME the user taps the Vault tab
+    private val _isVaultTabAuthenticated = MutableStateFlow(false)
+    val isVaultTabAuthenticated: StateFlow<Boolean> = _isVaultTabAuthenticated.asStateFlow()
+
+    // Dedicated Biometric / PIN Gate specifically for revealing/copying secrets inside the Password Vault
     private val _isBiometricUnlocked = MutableStateFlow(false)
     val isBiometricUnlocked: StateFlow<Boolean> = _isBiometricUnlocked.asStateFlow()
 
@@ -303,7 +311,30 @@ class PaperFlowViewModel(
     }
 
     fun selectTab(tab: PaperFlowTab) {
+        // Requirement 3: Biometric authentication is required EVERY TIME the user taps Vault!
+        // Reset _isVaultTabAuthenticated whenever Vault is tapped or when leaving Vault.
+        if (tab == PaperFlowTab.PASSWORDS || _currentTab.value == PaperFlowTab.PASSWORDS) {
+            _isVaultTabAuthenticated.value = false
+            _isBiometricUnlocked.value = false
+            revealTimerJobs.values.forEach { it.cancel() }
+            revealTimerJobs.clear()
+            _revealedPasswordCountdowns.value = emptyMap()
+        }
         _currentTab.value = tab
+    }
+
+    fun markAppEntryAuthenticated() {
+        _isAppEntryAuthenticated.value = true
+    }
+
+    fun lockAppEntryNow() {
+        _isAppEntryAuthenticated.value = false
+        lockVaultNow()
+    }
+
+    fun markVaultTabAuthenticated() {
+        _isVaultTabAuthenticated.value = true
+        _isBiometricUnlocked.value = true
     }
 
     fun markBiometricUnlocked() {
@@ -311,6 +342,7 @@ class PaperFlowViewModel(
     }
 
     fun lockVaultNow() {
+        _isVaultTabAuthenticated.value = false
         _isBiometricUnlocked.value = false
         revealTimerJobs.values.forEach { it.cancel() }
         revealTimerJobs.clear()
@@ -708,6 +740,21 @@ class PaperFlowViewModel(
                 "Cloud Backup disabled. All data remains strictly on-device."
             }
         }
+    }
+
+    fun setAutofillOverlayEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setAutofillOverlayEnabled(enabled)
+            _uiBannerMessage.value = if (enabled) {
+                "Seam Autofill & Save Password overlay enabled."
+            } else {
+                "Seam Autofill & Save Password overlay paused."
+            }
+        }
+    }
+
+    fun showBannerMessage(message: String) {
+        _uiBannerMessage.value = message
     }
 
     fun dismissBannerMessage() {

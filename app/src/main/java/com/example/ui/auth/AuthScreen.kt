@@ -184,8 +184,7 @@ fun signOutFromPaperFlow(
 
 @Composable
 fun AuthScreen(
-    onAuthSuccess: () -> Unit,
-    onContinueOffline: () -> Unit = {}
+    onAuthSuccess: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -260,7 +259,7 @@ fun AuthScreen(
                 }
 
                 Text(
-                    text = "A calm, local-first sanctuary for personal memories, Markdown reflections, and an isolated Keystore-encrypted password vault.",
+                    text = "Mandatory Google OAuth identity, one-time Vault PIN enrollment, and BiometricPrompt security for your reflections, memories, and autofill password vault.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -278,19 +277,19 @@ fun AuthScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         PillarRow(
-                            icon = Icons.Default.PhoneAndroid,
-                            title = "100% Local-First Phone Storage",
-                            subtitle = "Works completely offline; OAuth is optional identity, never encryption"
-                        )
-                        PillarRow(
-                            icon = Icons.Default.AutoAwesome,
-                            title = "On-Device Semantic Indexing & Opt-In AI",
-                            subtitle = "Local keyword & similarity search with transparent match explanations"
+                            icon = Icons.Default.Lock,
+                            title = "Mandatory Google Sign-In & One-Time PIN",
+                            subtitle = "Every user signs in with Google OAuth and configures a 4-digit Vault PIN once at sign-in"
                         )
                         PillarRow(
                             icon = Icons.Default.Fingerprint,
-                            title = "Isolated Keystore AES-256-GCM Vault",
-                            subtitle = "Passwords live in a separate DB boundary—never sent to AI or search"
+                            title = "BiometricPrompt Entry, Vault & Autofill Gate",
+                            subtitle = "Biometric authentication secures app entry, every Vault tap, and system-wide password autofill"
+                        )
+                        PillarRow(
+                            icon = Icons.Default.AutoAwesome,
+                            title = "Isolated Keystore Vault & Semantic Search",
+                            subtitle = "Local phone storage with automatic Autofill & Save Password overlay across apps"
                         )
                     }
                 }
@@ -351,33 +350,20 @@ fun AuthScreen(
                         )
                         Spacer(modifier = Modifier.size(10.dp))
                         Text(
-                            text = "Sign in with Google",
+                            text = "Sign in with Google (Required)",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                OutlinedButton(
-                    onClick = onContinueOffline,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("continue_offline_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PhoneAndroid,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(
-                        text = "Continue Offline in Local Sanctuary",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                Text(
+                    text = "Google Sign-In is required for all users. After signing in, you will set your 4-digit Vault PIN once and authenticate with BiometricPrompt.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
             }
         }
     }

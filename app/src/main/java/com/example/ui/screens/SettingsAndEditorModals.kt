@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.view.autofill.AutofillManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -29,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CloudQueue
@@ -37,6 +42,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -61,11 +67,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.core.security.BiometricSecurityManager
 import com.example.data.local.VaultCredentialEntity
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
@@ -76,6 +84,8 @@ import com.example.ui.components.AmbientLightBackdrop
 import com.example.ui.components.RawVideoAnimationBanner
 import com.example.ui.components.SeamTopHeader
 import com.example.ui.components.seamPressableCard
+import com.example.ui.security.PinOnlyVerificationDialog
+import com.example.ui.security.triggerHardwareBiometricPrompt
 import com.example.ui.theme.SeamBorderSubtle
 import com.example.ui.theme.SeamCharcoal
 import com.example.ui.theme.SeamElevatedSurface
@@ -84,6 +94,7 @@ import com.example.ui.theme.SeamLavenderAccent
 import com.example.ui.theme.SeamMutedGrey
 import com.example.ui.theme.SeamNearBlack
 import com.example.ui.theme.SeamSilver
+import com.example.ui.theme.SeamSuccessSage
 import com.example.ui.theme.SeamWarmIvory
 import com.example.ui.viewmodel.BackgroundStatusState
 import java.text.SimpleDateFormat
@@ -115,6 +126,7 @@ fun SettingsAndSyncScreen(
     onSetAiExecutionMode: (AiExecutionMode, Boolean) -> Unit,
     onClearAllDerivedAiInsights: () -> Unit,
     onSetBiometricEnabled: (Boolean) -> Unit,
+    onSetAutofillOverlayEnabled: (Boolean) -> Unit = {},
     onUpdatePasscode: (String) -> Unit,
     onSetBatterySaverSyncOnly: (Boolean) -> Unit,
     onSetCloudBackupEnabled: (Boolean) -> Unit,
@@ -127,13 +139,55 @@ fun SettingsAndSyncScreen(
         BackHandler(onBack = onBackToHome)
     }
 
-    var expandedSection by remember { mutableStateOf<String?>("AI") }
-    var pinInput by remember(preferences.vaultPasscode) { mutableStateOf(preferences.vaultPasscode) }
+    val context = LocalContext.current
+    var expandedSection by remember { mutableStateOf<String?>("LOCK") }
+    var pinInput by remember(preferences.vaultPasscode) { mutableStateOf("") }
+    // Requirement 5: Vault PIN is set once at Sign-In and can ONLY be changed in Settings AFTER Biometric authentication (or current PIN on non-biometric devices)!
+    var isPinChangeBiometricVerified by remember { mutableStateOf(false) }
+    var showPinOnlyChangeVerificationDialog by remember { mutableStateOf(false) }
+    var pinChangeStatusMessage by remember {
+        mutableStateOf("Vault PIN was configured at Sign-In (••••). Authenticate with your device to change it.")
+    }
+    var isDeviceAutofillGranted by remember(context) {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val afm = context.getSystemService(AutofillManager::class.java)
+                afm?.hasEnabledAutofillServices() == true
+            } else {
+                false
+            }
+        )
+    }
+    val autofillPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        isDeviceAutofillGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val afm = context.getSystemService(AutofillManager::class.java)
+            afm?.hasEnabledAutofillServices() == true
+        } else {
+            false
+        }
+    }
     var showCloudAiConsentDialog by remember { mutableStateOf(false) }
     var showBackupChangeConfirmDialog by remember { mutableStateOf<Boolean?>(null) }
     var showReviewSuggestionsDialog by remember { mutableStateOf(false) }
 
-    val kbUsed = (backgroundStatus.privateStorageBytes / 1024L).coerceAtLeast(12L)
+    if (showPinOnlyChangeVerificationDialog) {
+        PinOnlyVerificationDialog(
+            title = "Verify Current Vault PIN",
+            subtitle = "No biometric sensor detected on this device. Enter your current 4-digit Vault PIN to unlock PIN modification.",
+            expectedPasscode = preferences.vaultPasscode,
+            onDismiss = { showPinOnlyChangeVerificationDialog = false },
+            onVerified = {
+                showPinOnlyChangeVerificationDialog = false
+                isPinChangeBiometricVerified = true
+                pinInput = ""
+                pinChangeStatusMessage = "Current PIN verified · Enter your new 4-digit Vault PIN below."
+            }
+        )
+    }
+
+    val kbUsed = (backgroundStatus.privateStorageBytes / 1024L).coerceAtLeast(0L)
     val unanalyzedCount = entriesForAiReview.count { !it.isAnalyzed }
     val analyzedEntries = entriesForAiReview.filter { it.isAnalyzed && (it.aiSummary.isNotBlank() || it.aiKeywords.isNotBlank()) }
     val dateFormat = remember { SimpleDateFormat("MMM d · h:mm a", Locale.getDefault()) }
@@ -375,12 +429,12 @@ fun SettingsAndSyncScreen(
                 }
             }
 
-            // SECTION 2: App lock ("Biometrics and device credential")
+            // SECTION 2: App lock ("Biometrics, Vault PIN & Autofill overlay")
             item {
                 SettingsGoalSectionCard(
                     icon = Icons.Outlined.Lock,
-                    title = "App lock",
-                    subtitle = "Biometrics and device credential",
+                    title = "App lock & Autofill",
+                    subtitle = "BiometricPrompt entry, every-tap Vault lock & PIN",
                     isExpanded = expandedSection == "LOCK",
                     reducedMotion = preferences.reducedMotionEnabled,
                     testTag = "settings_section_lock",
@@ -388,6 +442,43 @@ fun SettingsAndSyncScreen(
                         expandedSection = if (expandedSection == "LOCK") null else "LOCK"
                     }
                 ) {
+                    val securityLayer = remember(context) {
+                        BiometricSecurityManager.assessSecurityLayer(context)
+                    }
+
+                    // Security Layer Hardware & Permission Status Panel
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(SeamElevatedSurface)
+                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
+                            .padding(14.dp)
+                            .testTag("security_layer_status_panel"),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "SECURITY LAYER · HARDWARE & PERMISSION CHECK",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SeamLavenderAccent
+                        )
+                        Text(
+                            text = "Status: ${securityLayer.statusLabel}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SeamWarmIvory
+                        )
+                        Text(
+                            text = "Biometric Sensor Hardware: ${if (securityLayer.hasPhysicalBiometricSensor) "Detected" else "Not Present (PIN/Password Fallback Active)"} · Permission (USE_BIOMETRIC): ${if (securityLayer.hasBiometricPermission) "Granted" else "Required"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SeamSilver
+                        )
+                        Text(
+                            text = securityLayer.statusDetail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SeamMutedGrey
+                        )
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -395,12 +486,12 @@ fun SettingsAndSyncScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Biometric & credential gate",
+                                text = "Entry & Every-Tap Vault Security Gate",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = SeamWarmIvory
                             )
                             Text(
-                                text = "Require biometric or PIN before revealing secrets (${preferences.revealTimeoutSeconds}s auto-hide, ${preferences.clipboardAutoClearSeconds}s clipboard wipe).",
+                                text = "Uses hardware BiometricPrompt when sensor & permission are present, or requires PIN/Password entry on devices lacking a biometric sensor.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = SeamMutedGrey
                             )
@@ -412,24 +503,152 @@ fun SettingsAndSyncScreen(
                         )
                     }
 
+                    // Requirement 2: Automatic Autofill & Save Password Overlay Toggle + System Settings Launcher
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedTextField(
-                            value = pinInput,
-                            onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) pinInput = it },
-                            label = { Text("4-Digit Fallback PIN") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Google-Style Autofill & Save Overlay",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = SeamWarmIvory
+                            )
+                            Text(
+                                text = "Show automatic Autofill and Save Password overlay across apps.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SeamMutedGrey
+                            )
+                        }
+                        Switch(
+                            checked = preferences.isAutofillOverlayEnabled,
+                            onCheckedChange = onSetAutofillOverlayEnabled,
+                            modifier = Modifier.testTag("autofill_overlay_switch")
                         )
-                        Button(
-                            onClick = { onUpdatePasscode(pinInput) },
-                            enabled = pinInput.length == 4,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Save PIN")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                try {
+                                    val intent = Intent(
+                                        Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    autofillPermissionLauncher.launch(intent)
+                                } catch (_: Exception) {
+                                    try {
+                                        autofillPermissionLauncher.launch(Intent(Settings.ACTION_SETTINGS))
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_system_autofill_service_button")
+                    ) {
+                        Text(
+                            if (isDeviceAutofillGranted) {
+                                "Android Autofill & Auto-Save Permission: Granted"
+                            } else {
+                                "Grant Android Autofill & Auto-Save Permission"
+                            }
+                        )
+                    }
+
+                    // Requirement 5: Vault PIN / Password set once at Sign-In; changing it in Settings requires Biometric or current PIN verification first!
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(SeamElevatedSurface)
+                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "FALLBACK PIN / PASSWORD MANAGEMENT (SET AT SIGN-IN)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SeamLavenderAccent
+                        )
+                        Text(
+                            text = pinChangeStatusMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isPinChangeBiometricVerified) SeamSuccessSage else SeamSilver
+                        )
+
+                        if (!isPinChangeBiometricVerified) {
+                            Button(
+                                onClick = {
+                                    triggerHardwareBiometricPrompt(
+                                        context = context,
+                                        title = "Authenticate to Change Vault PIN / Password",
+                                        subtitle = "Confirm with your Android device sensor to modify your fallback PIN/Password",
+                                        onAuthenticated = {
+                                            isPinChangeBiometricVerified = true
+                                            pinInput = ""
+                                            pinChangeStatusMessage = "Android biometric verified · Enter your new 4-digit PIN or Password below."
+                                        },
+                                        onNoBiometricSensorAvailable = {
+                                            showPinOnlyChangeVerificationDialog = true
+                                        },
+                                        onAuthenticationFailedOrCancelled = { err ->
+                                            pinChangeStatusMessage = err
+                                        }
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SeamWarmIvory,
+                                    contentColor = SeamNearBlack
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("authenticate_to_change_pin_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Authenticate Device to Change PIN / Password",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = pinInput,
+                                    onValueChange = { pinInput = it },
+                                    label = { Text("New 4-Digit PIN or Password") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("settings_new_pin_input")
+                                )
+                                Button(
+                                    onClick = {
+                                        onUpdatePasscode(pinInput.trim())
+                                        isPinChangeBiometricVerified = false
+                                        pinInput = ""
+                                        pinChangeStatusMessage = "Fallback PIN / Password updated and re-locked."
+                                    },
+                                    enabled = pinInput.trim().length >= 4,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.testTag("settings_save_new_pin_button")
+                                ) {
+                                    Text("Save")
+                                }
+                            }
                         }
                     }
 
@@ -440,7 +659,7 @@ fun SettingsAndSyncScreen(
                             .fillMaxWidth()
                             .testTag("settings_lock_vault_button")
                     ) {
-                        Text("Lock Vault Immediately")
+                        Text("Lock Application & Vault Immediately")
                     }
                 }
             }

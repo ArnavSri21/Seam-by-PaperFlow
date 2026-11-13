@@ -290,7 +290,7 @@ fun SanctuaryScreen(
 
             // 6. Honest System Status Row (AI paused / indexing / local storage status)
             item {
-                val kbUsed = (backgroundStatus.privateStorageBytes / 1024L).coerceAtLeast(12L)
+                val kbUsed = (backgroundStatus.privateStorageBytes / 1024L).coerceAtLeast(0L)
                 val statusSummary = when {
                     preferences.aiExecutionMode == AiExecutionMode.PAUSED ->
                         "AI indexing paused · Local storage active (${backgroundStatus.privateFilesCount} files, $kbUsed KB)"

@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 
     <application
         android:allowBackup="true"
@@ -26,6 +27,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Biometric-gated Autofill Authentication Activity -->
+        <activity
+            android:name=".core.autofill.SeamAutofillAuthActivity"
+            android:exported="false"
+            android:label="Seam Autofill Authentication"
+            android:theme="@style/Theme.MyApplication" />
+
+        <!-- Android System Autofill & Save Password Service (Just like Google Autofill) -->
+        <service
+            android:name=".core.autofill.SeamAutofillService"
+            android:exported="true"
+            android:label="Seam by PaperFlow Autofill"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/seam_autofill_service" />
+        </service>
     </application>
 
 </manifest>

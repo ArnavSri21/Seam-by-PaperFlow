@@ -115,6 +115,15 @@ class PrivatePhoneStorageManager(private val context: Context) {
         snapshotFile.absolutePath
     }
 
+    suspend fun cleanupPreloadedSampleFiles() = withContext(Dispatchers.IO) {
+        listOf("seam_constellation_01.jpg", "seam_editorial_solstice_02.jpg").forEach { sampleName ->
+            val file = File(vaultMediaDir, sampleName)
+            if (file.exists()) {
+                file.delete()
+            }
+        }
+    }
+
     fun getPrivateStorageStats(): Pair<Int, Long> {
         val mediaFiles = vaultMediaDir.listFiles().orEmpty()
         val backupFiles = exportVaultDir.listFiles().orEmpty()
