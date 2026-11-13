@@ -8,44 +8,46 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.example.data.preferences.ThemeModePreference
 
-private val ObsidianDarkScheme = darkColorScheme(
-    primary = ParchmentGold,
-    onPrimary = ObsidianInk,
-    primaryContainer = ObsidianElevated,
-    onPrimaryContainer = TextIvory,
-    secondary = CelesteAccent,
-    onSecondary = ObsidianInk,
-    secondaryContainer = Color(0xFF132D33),
-    onSecondaryContainer = CelesteAccent,
-    tertiary = LavenderMist,
-    background = ObsidianInk,
-    onBackground = TextIvory,
-    surface = ObsidianSurface,
-    onSurface = TextIvory,
-    surfaceVariant = ObsidianCard,
-    onSurfaceVariant = TextSilver,
-    error = CoralAlert,
-    outline = Color(0xFF2B354C)
+private val SeamDarkColorScheme = darkColorScheme(
+    primary = SeamWarmIvory,
+    onPrimary = SeamNearBlack,
+    primaryContainer = SeamElevatedSurface,
+    onPrimaryContainer = SeamWarmIvory,
+    secondary = SeamLavenderAccent,
+    onSecondary = SeamNearBlack,
+    secondaryContainer = SeamElevatedSurface,
+    onSecondaryContainer = SeamSilver,
+    tertiary = SeamSilver,
+    onTertiary = SeamNearBlack,
+    background = SeamNearBlack,
+    onBackground = SeamWarmIvory,
+    surface = SeamCharcoal,
+    onSurface = SeamWarmIvory,
+    surfaceVariant = SeamCharcoal,
+    onSurfaceVariant = SeamMutedGrey,
+    error = SeamErrorCoral,
+    outline = SeamBorderSubtle,
+    outlineVariant = SeamHighlightBorder
 )
 
 private val WarmPaperLightScheme = lightColorScheme(
-    primary = BronzeAccent,
+    primary = DeepInkPrimary,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE6DCC8),
+    primaryContainer = Color(0xFFE4E0D5),
     onPrimaryContainer = DeepInkPrimary,
     secondary = DeepTealSecondary,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD2E7E8),
-    onSecondaryContainer = DeepTealSecondary,
-    tertiary = Color(0xFF52489C),
+    secondaryContainer = Color(0xFFDDD9E8),
+    onSecondaryContainer = DeepInkPrimary,
+    tertiary = BronzeAccent,
     background = WarmPaperBg,
     onBackground = DeepInkPrimary,
     surface = WarmPaperSurface,
     onSurface = DeepInkPrimary,
     surfaceVariant = WarmPaperCard,
-    onSurfaceVariant = Color(0xFF4A5365),
+    onSurfaceVariant = Color(0xFF565961),
     error = Color(0xFFB3261E),
-    outline = Color(0xFFD0C9B8)
+    outline = Color(0xFFD5D1C5)
 )
 
 @Composable
@@ -59,7 +61,7 @@ fun PaperFlowTheme(
         ThemeModePreference.SYSTEM -> isSystemInDarkTheme()
     }
 
-    val colorScheme = if (useDarkTheme) ObsidianDarkScheme else WarmPaperLightScheme
+    val colorScheme = if (useDarkTheme) SeamDarkColorScheme else WarmPaperLightScheme
 
     MaterialTheme(
         colorScheme = colorScheme,

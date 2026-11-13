@@ -98,6 +98,10 @@ class PaperFlowViewModel(
     private val _uiBannerMessage = MutableStateFlow<String?>(null)
     val uiBannerMessage: StateFlow<String?> = _uiBannerMessage.asStateFlow()
 
+    private var lastDeletedEntry: VaultEntryEntity? = null
+    private val _canUndoDelete = MutableStateFlow(false)
+    val canUndoDelete: StateFlow<Boolean> = _canUndoDelete.asStateFlow()
+
     val preferences: StateFlow<UserVaultPreferences> = preferencesManager.preferencesFlow
         .stateIn(
             scope = viewModelScope,
@@ -498,9 +502,36 @@ class PaperFlowViewModel(
 
     fun deleteEntry(entry: VaultEntryEntity) {
         viewModelScope.launch {
+            lastDeletedEntry = entry
+            _canUndoDelete.value = true
             repository.deleteEntry(entry, isSignedInWithGoogle)
             refreshStorageAndBatteryMetrics()
-            _uiBannerMessage.value = "Removed '${entry.title}' from phone storage."
+            _uiBannerMessage.value = "Removed '${entry.title}' from local storage."
+        }
+    }
+
+    fun undoLastDeletedEntry() {
+        val restored = lastDeletedEntry ?: return
+        lastDeletedEntry = null
+        _canUndoDelete.value = false
+        viewModelScope.launch {
+            val type = runCatching { VaultItemType.valueOf(restored.itemType) }.getOrDefault(VaultItemType.NOTE)
+            repository.saveSanctuaryEntry(
+                userId = currentUserId,
+                existingId = null,
+                itemType = type,
+                title = restored.title,
+                primaryContent = restored.primaryContent,
+                secondaryMetadata = restored.secretValue,
+                websiteOrLocation = restored.websiteOrLocation,
+                folderOrAlbum = restored.folderOrAlbum,
+                mediaPath = restored.mediaPath,
+                category = restored.category,
+                moodTag = restored.moodTag,
+                isFavorite = restored.isFavorite
+            )
+            refreshStorageAndBatteryMetrics()
+            _uiBannerMessage.value = "Restored '${restored.title}'."
         }
     }
 

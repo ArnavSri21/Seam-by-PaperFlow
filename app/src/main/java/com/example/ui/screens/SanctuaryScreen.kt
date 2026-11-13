@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,52 +19,63 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.FolderSpecial
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.R
+import androidx.compose.ui.unit.sp
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
 import com.example.data.preferences.AiExecutionMode
 import com.example.data.preferences.UserVaultPreferences
-import com.example.ui.components.GlowingSyncPill
-import com.example.ui.components.RawVideoAnimationBanner
-import com.example.ui.components.SeamBrandWordmark
+import com.example.ui.components.AmbientLightBackdrop
+import com.example.ui.components.MemoryConstellationHeroCanvas
+import com.example.ui.components.SeamTopHeader
+import com.example.ui.components.seamPressableCard
+import com.example.ui.theme.SeamBorderSubtle
+import com.example.ui.theme.SeamCharcoal
+import com.example.ui.theme.SeamElevatedSurface
+import com.example.ui.theme.SeamLavenderAccent
+import com.example.ui.theme.SeamMutedGrey
+import com.example.ui.theme.SeamNearBlack
+import com.example.ui.theme.SeamSilver
+import com.example.ui.theme.SeamWarmIvory
 import com.example.ui.viewmodel.BackgroundStatusState
 import com.example.ui.viewmodel.PaperFlowTab
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * 02 · Home dashboard (Pages 3–4 of Seam by PaperFlow UI/UX Specification):
+ * - Brand mark and wordmark at top, with settings shortcut.
+ * - Two-line greeting / positioning statement ("Your space," / "A quieter place for the things that matter.").
+ * - Global search field with visible filter affordance.
+ * - One featured memory / constellation card (700–1200ms draw-in then settle; never autoplays video or blocks scroll).
+ * - Three core feature cards: Memories, Notes & reflections, Password vault.
+ * - Recent items list with title, type, last-updated time and optional tag (never exposing vault secrets).
+ */
 @Composable
 fun SanctuaryScreen(
     entries: List<VaultEntryEntity>,
@@ -81,147 +91,62 @@ fun SanctuaryScreen(
 ) {
     val notesCount = entries.count { it.itemType == VaultItemType.NOTE.name }
     val galleryCount = entries.count { it.itemType == VaultItemType.GALLERY.name }
-    val analyzedCount = entries.count { it.isAnalyzed }
+    val dateFormat = SimpleDateFormat("MMM d · h:mm a", Locale.getDefault())
 
-    LazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .testTag("sanctuary_list"),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+            .background(SeamNearBlack)
     ) {
-        // 1. Hero Banner with SEAM by PaperFlow Wordmark, PaperFlow Emblem, and Atmospheric Smoke Intro
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(225.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                        RoundedCornerShape(24.dp)
-                    )
-            ) {
-                RawVideoAnimationBanner(
-                    rawResId = R.raw.paper_flow_intro,
+        AmbientLightBackdrop(reducedMotion = preferences.reducedMotionEnabled)
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("sanctuary_list"),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            // 1. Top Brand Header with Settings shortcut & honest system status
+            item {
+                SeamTopHeader(
+                    statusLabel = backgroundStatus.pillLabel,
+                    isStatusActive = backgroundStatus.isAnalyzingOrSyncing,
                     reducedMotion = preferences.reducedMotionEnabled,
-                    modifier = Modifier.fillMaxSize(),
-                    overlayScrimAlpha = 0.35f
+                    onSettingsClick = { onNavigateToTab(PaperFlowTab.SETTINGS) }
                 )
+            }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SeamBrandWordmark(emblemSize = 46.dp, lightTextOnDark = true)
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            GlowingSyncPill(
-                                label = backgroundStatus.pillLabel,
-                                isActive = backgroundStatus.isAnalyzingOrSyncing,
-                                reducedMotion = preferences.reducedMotionEnabled,
-                                modifier = Modifier
-                                    .clickable { onTriggerBackgroundSyncAndAi() }
-                                    .testTag("background_sync_pill")
-                            )
-                            IconButton(
-                                onClick = onLockSanctuary,
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f))
-                                    .testTag("quick_lock_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = "Lock Vault",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Local-First Sanctuary Status & AI Mode Card
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xD90A0E17))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                            .padding(12.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Shield,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = when (preferences.aiExecutionMode) {
-                                        AiExecutionMode.LOCAL_ON_DEVICE -> "LOCAL-FIRST • ON-DEVICE AI ACTIVE"
-                                        AiExecutionMode.CLOUD_GEMINI_OPT_IN -> "LOCAL-FIRST • OPT-IN CLOUD AI"
-                                        AiExecutionMode.PAUSED -> "LOCAL-FIRST • AI INDEXING PAUSED"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
-                            Text(
-                                text = if (preferences.isCloudBackupEnabled) "Cloud Backup: Opt-In" else "100% Offline Private",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFB8B5FF)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = preferences.lastSanctuaryInsight,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFF4F1EA),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+            // 2. Two-line greeting / positioning statement (no forced motivational copy)
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Your space,",
+                        style = MaterialTheme.typography.displayLarge,
+                        color = SeamWarmIvory
+                    )
+                    Text(
+                        text = "A quieter place for the things that matter.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = SeamMutedGrey
+                    )
                 }
             }
-        }
 
-        // 2. Quick Semantic Search Bar Shortcut (Explicitly notes Vault exclusion)
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToTab(PaperFlowTab.SEARCH) }
-                    .testTag("sanctuary_search_bar_card"),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
+            // 3. Global search field near the top with visible filter affordance
+            item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .height(54.dp)
+                        .seamPressableCard(
+                            reducedMotion = preferences.reducedMotionEnabled,
+                            shape = RoundedCornerShape(18.dp),
+                            onClick = { onNavigateToTab(PaperFlowTab.SEARCH) }
+                        )
+                        .background(SeamCharcoal)
+                        .padding(horizontal = 16.dp)
+                        .testTag("home_global_search_bar"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -231,499 +156,386 @@ fun SanctuaryScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Search,
+                            imageVector = Icons.Outlined.Search,
                             contentDescription = "Search",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Column {
-                            Text(
-                                text = "Search memories & reflections...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Lexical FTS + Local Semantic Index (Vault excluded for privacy)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Semantic Search",
-                        tint = MaterialTheme.colorScheme.secondary
-                    )
-                }
-            }
-        }
-
-        // 3. Three Core Modules Summary (Reflections, Memories/Gallery, Isolated Password Vault)
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatPillarCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Reflections",
-                    subtitle = "Markdown",
-                    count = notesCount,
-                    icon = Icons.Default.Description,
-                    accentColor = MaterialTheme.colorScheme.primary,
-                    onClick = { onNavigateToTab(PaperFlowTab.NOTES) }
-                )
-                StatPillarCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Memories",
-                    subtitle = "Orbital",
-                    count = galleryCount,
-                    icon = Icons.Default.PhotoLibrary,
-                    accentColor = MaterialTheme.colorScheme.secondary,
-                    onClick = { onNavigateToTab(PaperFlowTab.GALLERY) }
-                )
-                StatPillarCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Vault",
-                    subtitle = "Keystore DB",
-                    count = isolatedVaultCount,
-                    icon = Icons.Default.Key,
-                    accentColor = MaterialTheme.colorScheme.tertiary,
-                    onClick = { onNavigateToTab(PaperFlowTab.PASSWORDS) }
-                )
-            }
-        }
-
-        // 4. Editorial Calendar-Like Monochrome Memory Index Card (Reference #1: animationtemp1.mp4)
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f)
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PhoneAndroid,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = "On-Device Storage & Resumable Worker",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = onTriggerBackgroundSyncAndAi,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier
-                                .height(34.dp)
-                                .testTag("analyze_now_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Index Now", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-
-                    Text(
-                        text = backgroundStatus.detailStatus,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        TelemetryBadge(
-                            icon = Icons.Default.AutoAwesome,
-                            label = "$analyzedCount/${entries.size} Indexed"
-                        )
-                        TelemetryBadge(
-                            icon = Icons.Default.BatteryChargingFull,
-                            label = "Battery ${backgroundStatus.batteryHealth.batteryPct}%"
-                        )
-                        TelemetryBadge(
-                            icon = Icons.Default.Shield,
-                            label = "$isolatedVaultCount Isolated Secrets"
-                        )
-                    }
-                }
-            }
-        }
-
-        // 5. Quick Creation Actions
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = { onOpenNewEntryDialog(VaultItemType.NOTE) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_add_note_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text("+ Reflection", style = MaterialTheme.typography.labelLarge)
-                }
-                Button(
-                    onClick = { onOpenNewEntryDialog(VaultItemType.GALLERY) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_add_gallery_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary,
-                        contentColor = MaterialTheme.colorScheme.onSecondary
-                    )
-                ) {
-                    Text("+ Memory", style = MaterialTheme.typography.labelLarge)
-                }
-                Button(
-                    onClick = { onNavigateToTab(PaperFlowTab.PASSWORDS) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_add_password_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Text("Open Vault", style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
-
-        // 6. Editorial Calendar-Like Memory & Reflection Index Header
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Editorial Memory Index",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "${entries.size} local sanctuary items",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        items(entries.take(10), key = { it.id }) { entry ->
-            VaultStreamItemCard(
-                entry = entry,
-                matchExplanation = null,
-                onClick = { onSelectEntry(entry) },
-                onToggleFavorite = { onToggleFavorite(entry) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatPillarCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    subtitle: String,
-    count: Int,
-    icon: ImageVector,
-    accentColor: Color,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(accentColor.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = accentColor,
-                    modifier = Modifier.size(19.dp)
-                )
-            }
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun TelemetryBadge(
-    icon: ImageVector,
-    label: String
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(alpha = 0.05f))
-            .padding(horizontal = 8.dp, vertical = 5.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.size(14.dp)
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
-
-@Composable
-fun VaultStreamItemCard(
-    entry: VaultEntryEntity,
-    matchExplanation: String? = null,
-    onClick: () -> Unit,
-    onToggleFavorite: () -> Unit
-) {
-    val dayFormat = SimpleDateFormat("dd", Locale.getDefault())
-    val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
-    val fullDateFormat = SimpleDateFormat("MMM d • HH:mm", Locale.getDefault())
-
-    val typeAccent = when (entry.itemType) {
-        VaultItemType.GALLERY.name -> MaterialTheme.colorScheme.secondary
-        else -> MaterialTheme.colorScheme.primary
-    }
-    val typeIcon = when (entry.itemType) {
-        VaultItemType.GALLERY.name -> Icons.Default.PhotoLibrary
-        else -> Icons.Default.Description
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .testTag("vault_entry_card_${entry.id}"),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            // Editorial Calendar Date Column (inspired by animationtemp1.mp4 Swiss poster date index)
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .width(46.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = 0.25f))
-                    .padding(vertical = 8.dp)
-            ) {
-                Text(
-                    text = "${dayFormat.format(Date(entry.updatedAtMillis))}.",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = monthFormat.format(Date(entry.updatedAtMillis)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = typeAccent
-                )
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = typeIcon,
-                            contentDescription = null,
-                            tint = typeAccent,
-                            modifier = Modifier.size(16.dp)
+                            tint = SeamMutedGrey,
+                            modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "${entry.folderOrAlbum} • ${entry.category}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = typeAccent,
+                            text = "Search memories, thoughts and ideas",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = SeamMutedGrey,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(typeAccent.copy(alpha = 0.14f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = entry.moodTag,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = typeAccent
-                            )
-                        }
                     }
 
                     IconButton(
-                        onClick = onToggleFavorite,
-                        modifier = Modifier.size(30.dp)
+                        onClick = { onNavigateToTab(PaperFlowTab.SEARCH) },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("home_search_filter_button")
                     ) {
                         Icon(
-                            imageVector = if (entry.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Pin or Favorite",
-                            tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp)
+                            imageVector = Icons.Outlined.Tune,
+                            contentDescription = "Search filters",
+                            tint = SeamSilver,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
+            }
 
-                Text(
-                    text = entry.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Text(
-                    text = entry.primaryContent,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (!matchExplanation.isNullOrBlank()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FolderSpecial,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(14.dp)
+            // 4. Featured Memory Constellation Card (700–1200ms draw-in then settle; no video autoplay!)
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(196.dp)
+                        .seamPressableCard(
+                            reducedMotion = preferences.reducedMotionEnabled,
+                            shape = RoundedCornerShape(24.dp),
+                            onClick = { onNavigateToTab(PaperFlowTab.GALLERY) }
                         )
-                        Text(
-                            text = matchExplanation,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.secondary
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF1A1D23),
+                                    Color(0xFF131519)
+                                )
+                            )
                         )
-                    }
-                } else if (entry.aiSummary.isNotBlank()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.Black.copy(alpha = 0.22f))
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = entry.aiSummary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .testTag("home_constellation_hero_card")
                 ) {
-                    Text(
-                        text = fullDateFormat.format(Date(entry.updatedAtMillis)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    MemoryConstellationHeroCanvas(
+                        memoryCount = galleryCount.coerceAtLeast(4),
+                        reducedMotion = preferences.reducedMotionEnabled,
+                        modifier = Modifier.fillMaxSize()
                     )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(22.dp),
+                        verticalArrangement = Arrangement.Bottom
+                    ) {
+                        Text(
+                            text = "A constellation\nof your moments.",
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontSize = 25.sp,
+                                lineHeight = 31.sp
+                            ),
+                            color = SeamWarmIvory
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Bring the little pieces together.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = SeamMutedGrey
+                        )
+                    }
+                }
+            }
+
+            // 5. Section: YOUR SPACE — Three Core Feature Cards with full-row tap targets
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = if (entry.isAnalyzed) "Indexed" else "Pending Index",
+                        text = "YOUR SPACE",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (entry.isAnalyzed) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                        color = SeamMutedGrey,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)
+                    )
+
+                    HomeFeatureRowCard(
+                        icon = Icons.Outlined.PhotoLibrary,
+                        title = "Memories",
+                        subtitle = if (galleryCount > 0) {
+                            "Photos, moments and places · $galleryCount saved"
+                        } else {
+                            "Photos, moments and places"
+                        },
+                        reducedMotion = preferences.reducedMotionEnabled,
+                        testTag = "feature_card_memories",
+                        onClick = { onNavigateToTab(PaperFlowTab.GALLERY) }
+                    )
+
+                    HomeFeatureRowCard(
+                        icon = Icons.Outlined.Edit,
+                        title = "Notes & reflections",
+                        subtitle = if (notesCount > 0) {
+                            "Thoughts worth keeping · $notesCount notes"
+                        } else {
+                            "Thoughts worth keeping"
+                        },
+                        reducedMotion = preferences.reducedMotionEnabled,
+                        testTag = "feature_card_notes",
+                        onClick = { onNavigateToTab(PaperFlowTab.NOTES) }
+                    )
+
+                    HomeFeatureRowCard(
+                        icon = Icons.Outlined.Lock,
+                        title = "Password vault",
+                        subtitle = if (isolatedVaultCount > 0) {
+                            "Credentials, kept private · $isolatedVaultCount protected"
+                        } else {
+                            "Credentials, kept private"
+                        },
+                        reducedMotion = preferences.reducedMotionEnabled,
+                        testTag = "feature_card_vault",
+                        onClick = { onNavigateToTab(PaperFlowTab.PASSWORDS) }
                     )
                 }
             }
+
+            // 6. Honest System Status Row (AI paused / indexing / local storage status)
+            item {
+                val kbUsed = (backgroundStatus.privateStorageBytes / 1024L).coerceAtLeast(12L)
+                val statusSummary = when {
+                    preferences.aiExecutionMode == AiExecutionMode.PAUSED ->
+                        "AI indexing paused · Local storage active (${backgroundStatus.privateFilesCount} files, $kbUsed KB)"
+                    backgroundStatus.isAnalyzingOrSyncing ->
+                        "Indexing local metadata in background · Vault excluded"
+                    else ->
+                        "Saved locally on device ($kbUsed KB) · Cloud backup ${if (preferences.isCloudBackupEnabled) "opt-in enabled" else "off by default"}"
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(SeamCharcoal)
+                        .border(1.dp, SeamBorderSubtle, RoundedCornerShape(16.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = statusSummary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SeamMutedGrey,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (preferences.aiExecutionMode == AiExecutionMode.PAUSED) "Settings" else "Index now",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = SeamLavenderAccent,
+                        modifier = Modifier
+                            .seamPressableCard(
+                                reducedMotion = preferences.reducedMotionEnabled,
+                                shape = RoundedCornerShape(10.dp),
+                                onClick = {
+                                    if (preferences.aiExecutionMode == AiExecutionMode.PAUSED) {
+                                        onNavigateToTab(PaperFlowTab.SETTINGS)
+                                    } else {
+                                        onTriggerBackgroundSyncAndAi()
+                                    }
+                                }
+                            )
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            // 7. Recent items list (compact, never exposing sensitive vault secrets) or First-Run Empty State
+            if (entries.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(SeamCharcoal)
+                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(20.dp))
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Start your local space",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = SeamWarmIvory
+                        )
+                        Text(
+                            text = "Tap the + button below to write a note, import a photo memory, or add a Keystore-encrypted credential. Everything stays on your device by default.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = SeamMutedGrey
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = { onOpenNewEntryDialog(VaultItemType.NOTE) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SeamWarmIvory,
+                                    contentColor = SeamNearBlack
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("New note")
+                            }
+                            Button(
+                                onClick = { onOpenNewEntryDialog(VaultItemType.GALLERY) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SeamElevatedSurface,
+                                    contentColor = SeamWarmIvory
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Import memory")
+                            }
+                        }
+                    }
+                }
+            } else {
+                item {
+                    Text(
+                        text = "RECENT",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SeamMutedGrey,
+                        modifier = Modifier.padding(start = 2.dp, top = 4.dp)
+                    )
+                }
+
+                items(entries.take(5), key = { it.id }) { entry ->
+                    val isGallery = entry.itemType == VaultItemType.GALLERY.name
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .seamPressableCard(
+                                reducedMotion = preferences.reducedMotionEnabled,
+                                shape = RoundedCornerShape(18.dp),
+                                onClick = { onSelectEntry(entry) }
+                            )
+                            .background(SeamCharcoal)
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                            .testTag("sanctuary_entry_${entry.id}"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(SeamElevatedSurface)
+                                .border(1.dp, SeamBorderSubtle, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isGallery) Icons.Outlined.PhotoLibrary else Icons.Outlined.Description,
+                                contentDescription = if (isGallery) "Memory" else "Note",
+                                tint = SeamSilver,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Text(
+                                text = entry.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = SeamWarmIvory,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${if (isGallery) "Memory" else "Note"} · ${dateFormat.format(Date(entry.updatedAtMillis))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SeamMutedGrey
+                            )
+                        }
+
+                        if (entry.category.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(SeamElevatedSurface)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = entry.category,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SeamSilver
+                                )
+                            }
+                        }
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = SeamMutedGrey,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(56.dp))
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun HomeFeatureRowCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    reducedMotion: Boolean,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .seamPressableCard(
+                reducedMotion = reducedMotion,
+                shape = RoundedCornerShape(22.dp),
+                onClick = onClick
+            )
+            .background(SeamCharcoal)
+            .padding(horizontal = 18.dp, vertical = 18.dp)
+            .testTag(testTag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(SeamElevatedSurface)
+                .border(1.dp, SeamBorderSubtle, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = SeamSilver,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = SeamWarmIvory,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SeamMutedGrey
+            )
+        }
+
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = "Open $title",
+            tint = SeamMutedGrey,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
