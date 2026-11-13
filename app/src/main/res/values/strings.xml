@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Paper Flow</string>
+    <string name="sanctuary_tagline">Mindful Reflections, Memories &amp; Encrypted Vault</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="biometric_gate_title">Biometric Sanctuary Lock</string>
+    <string name="semantic_search_title">AI Semantic Search &amp; Filters</string>
+    <string name="private_storage_title">Automatic Personal Phone Storage</string>
+</resources>

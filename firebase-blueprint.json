@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "VaultSyncItem": {
+      "title": "VaultSyncItem",
+      "description": "Cloud backup and sync metadata for personal reflections, gallery memories, and encrypted credentials in Paper Flow.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner UID from Firebase Auth."
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["NOTE", "GALLERY", "PASSWORD"],
+          "description": "Type of vault entry."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title or label of the entry."
+        },
+        "category": {
+          "type": "string",
+          "description": "AI-organized category (e.g. Gratitude, Travel, Finance, Ideas)."
+        },
+        "aiSummary": {
+          "type": "string",
+          "description": "AI-generated mindful reflection summary or semantic description."
+        },
+        "aiKeywords": {
+          "type": "string",
+          "description": "Comma-separated semantic keywords for intelligent search."
+        },
+        "moodTag": {
+          "type": "string",
+          "description": "Emotional or mindful state tag."
+        },
+        "encryptedPayload": {
+          "type": "string",
+          "description": "Encrypted payload or reflection text."
+        },
+        "isAnalyzed": {
+          "type": "boolean",
+          "description": "Whether background AI analysis has completed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "userId",
+        "itemType",
+        "title",
+        "category",
+        "aiSummary",
+        "aiKeywords",
+        "moodTag",
+        "encryptedPayload",
+        "isAnalyzed",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/vault_items/{itemId}": {
+      "schema": {
+        "$ref": "#/entities/VaultSyncItem"
+      },
+      "description": "User-scoped subcollection for Paper Flow cloud backup and cross-device metadata sync."
+    }
+  }
+}

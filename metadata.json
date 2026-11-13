@@ -1,0 +1,6 @@
+{
+  "name": "Paper Flow",
+  "description": "A mindful, biometric-secured private space for personal reflections, gallery memories, and passwords with AI-powered semantic organization and search.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

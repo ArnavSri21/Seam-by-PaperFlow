@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidVaultSyncItem(data, userId) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId == userId &&
+             data.itemType is string && data.itemType in ['NOTE', 'GALLERY', 'PASSWORD'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 100 &&
+             data.aiSummary is string && data.aiSummary.size() <= 2000 &&
+             data.aiKeywords is string && data.aiKeywords.size() <= 2000 &&
+             data.moodTag is string && data.moodTag.size() <= 100 &&
+             data.encryptedPayload is string && data.encryptedPayload.size() <= 20000 &&
+             data.isAnalyzed is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/vault_items/{itemId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(itemId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(itemId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'itemType', 'title', 'category', 'aiSummary',
+                         'aiKeywords', 'moodTag', 'encryptedPayload', 'isAnalyzed',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'itemType', 'title', 'category', 'aiSummary',
+                         'aiKeywords', 'moodTag', 'encryptedPayload', 'isAnalyzed',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidVaultSyncItem(incoming(), userId);
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(itemId) &&
+                       isValidVaultSyncItem(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().itemType == existing().itemType &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title', 'category', 'aiSummary', 'aiKeywords',
+                         'moodTag', 'encryptedPayload', 'isAnalyzed', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(itemId);
+    }
+  }
+}

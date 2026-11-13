@@ -2,18 +2,8 @@
 
 Build **Seam by PaperFlow**, a native Android Kotlin + Jetpack Compose app: a calm, private, local-first home for personal memories, gallery items, notes/reflections and passwords.
 
-## Visual reference is mandatory
-Use the user's supplied premium dark password-manager screenshot as the primary UI reference. Match its visual qualities: near-black and charcoal layers, soft silver/ivory typography, quiet luminous gradients, fine grid texture, glossy but restrained cards, compact pill-shaped search, floating rounded bottom navigation, generous negative space and refined iconography. The reference is a design target, not permission to copy Proton Pass logos, names or exact proprietary assets.
-
-Motion should be elegant and atmospheric, not generic spinning decorations:
-- Ambient light drifts slowly across the background.
-- Fine grid and blurred light remain subtle and low contrast.
-- Hero memory illustration uses thin elliptical orbit lines and a slow luminous sweep.
-- Cards use short spring press feedback and slight elevation/scale changes.
-- Screen changes use restrained fade + small directional movement.
-- Logo motion is slow, precise and subtle; keep the mark visually stable.
-- Avoid constant high-speed rotation, bouncing, excessive particles, neon gradients and large motion that competes with reading.
-- Respect system reduced-motion settings and provide a static fallback.
+## Brand / supplied motion references
+Use the supplied MP4s as visual direction: (1) editorial monochrome calendar-like memory index, (2) fine luminous upload progress indicator, (3) photos arranging into an orbital memory constellation, (4) slow 3D concentric wire rings, and (5) atmospheric smoke resolving into the PaperFlow emblem. Preserve the PaperFlow emblem; do not redraw it inaccurately. Until a clean transparent vector/logo export is available, use a refined SEAM wordmark with “by PaperFlow”. Dark near-black canvas, warm ivory text, silver/lavender accents, subtle grain, generous whitespace and restrained motion. Respect reduced-motion settings. Include a complete light theme.
 
 ## Privacy requirements
 - Fully usable offline without sign-in.
@@ -41,4 +31,4 @@ Packages: core/security, data/local, data/repository, domain, feature/home, memo
 Define interfaces for embedding models and cloud providers. Keep cloud sync boundary disabled until enabled by user.
 
 ## Deliverables
-A buildable Android Studio project, source, Room migrations, unit/UI tests, setup docs, OAuth configuration guide, privacy threat model, permission rationale, and explicit list of unfinished integrations. Implement a real MVP first. Do not claim unimplemented features are complete. Never trade privacy for convenience.
+A buildable Android Studio project, Gradle wrapper/version catalog, source, Room migrations, unit/UI tests, setup docs, OAuth configuration guide, privacy threat model, permission rationale, and explicit list of unfinished integrations. Implement a real MVP first. Do not claim unimplemented features are complete. Never trade privacy for convenience.
