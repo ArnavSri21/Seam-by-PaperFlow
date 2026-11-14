@@ -131,8 +131,8 @@ class MainActivity : FragmentActivity() {
 fun PaperFlowAppRoot() {
     val context = LocalContext.current
     val prefsManager = remember(context) { PreferencesManager(context.applicationContext) }
-    val prefs by prefsManager.preferencesFlow.collectAsStateWithLifecycle(
-        initialValue = com.example.data.preferences.UserVaultPreferences()
+    val loadedPrefs by prefsManager.preferencesFlow.collectAsStateWithLifecycle(
+        initialValue = null
     )
     var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
 
@@ -146,9 +146,20 @@ fun PaperFlowAppRoot() {
         }
     }
 
+    val prefs = loadedPrefs
+    if (prefs == null && currentUser == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SeamNearBlack)
+        )
+        return
+    }
+
     // Requirement 4: Google Sign-In is mandatory for every user to use the app.
     val signedInUser = currentUser
-    val hasLocalGoogleSession = prefs.signedInGoogleEmail.isNotBlank() || prefs.signedInGoogleUid.isNotBlank()
+    val hasLocalGoogleSession = prefs != null &&
+        (prefs.signedInGoogleEmail.isNotBlank() || prefs.signedInGoogleUid.isNotBlank())
 
     if (signedInUser == null && !hasLocalGoogleSession) {
         PaperFlowTheme(themeMode = ThemeModePreference.DARK_PRIORITY) {
@@ -160,10 +171,14 @@ fun PaperFlowAppRoot() {
         }
     } else {
         val activeUserId = signedInUser?.uid
-            ?: prefs.signedInGoogleUid.ifBlank { "google_${prefs.signedInGoogleEmail.lowercase().hashCode().toUInt()}" }
-        val activeEmail = signedInUser?.email ?: prefs.signedInGoogleEmail
+            ?: prefs?.signedInGoogleUid?.ifBlank {
+                "google_${prefs.signedInGoogleEmail.lowercase().hashCode().toUInt()}"
+            }
+            ?: "google_session"
+        val activeEmail = signedInUser?.email ?: prefs?.signedInGoogleEmail.orEmpty()
         val activeDisplayName = signedInUser?.displayName
-            ?: prefs.signedInGoogleName.ifBlank { "Sanctuary Keeper" }
+            ?: prefs?.signedInGoogleName?.ifBlank { "Sanctuary Keeper" }
+            ?: "Sanctuary Keeper"
 
         key(activeUserId) {
             AuthenticatedSanctuaryHost(

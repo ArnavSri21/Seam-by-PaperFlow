@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -63,6 +64,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.lifecycle.lifecycleScope
 import com.example.R
 import com.example.data.preferences.PreferencesManager
 import com.example.ui.components.RawVideoAnimationBanner
@@ -74,6 +76,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Co
 import com.google.firebase.Firebase
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -87,6 +90,11 @@ tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+private fun resolveAuthScope(context: Context, fallbackScope: CoroutineScope): CoroutineScope {
+    val activity = context.findActivity() as? ComponentActivity
+    return activity?.lifecycleScope ?: fallbackScope
 }
 
 private fun resolveWebClientId(context: Context): String {
@@ -109,14 +117,17 @@ fun attemptAutoSignIn(
     onUnauthenticated: () -> Unit,
     scope: CoroutineScope
 ) {
+    val authScope = resolveAuthScope(context, scope)
     val currentUser = Firebase.auth.currentUser
     if (currentUser != null) {
-        scope.launch {
-            PreferencesManager(context.applicationContext).setSignedInGoogleAccount(
-                email = currentUser.email ?: "",
-                displayName = currentUser.displayName ?: "Sanctuary Keeper",
-                uid = currentUser.uid
-            )
+        authScope.launch {
+            withContext(NonCancellable) {
+                PreferencesManager(context.applicationContext).setSignedInGoogleAccount(
+                    email = currentUser.email ?: "",
+                    displayName = currentUser.displayName ?: "Sanctuary Keeper",
+                    uid = currentUser.uid
+                )
+            }
             onAuthSuccess()
         }
         return
@@ -133,7 +144,7 @@ fun attemptAutoSignIn(
         .addCredentialOption(googleIdOption)
         .build()
 
-    scope.launch {
+    authScope.launch {
         try {
             val activityContext = context.findActivity() ?: context
             val result = credentialManager.getCredential(activityContext, request)
@@ -142,19 +153,23 @@ fun attemptAutoSignIn(
                 val googleCred = GoogleIdTokenCredential.createFrom(credential.data)
                 val googleIdToken = googleCred.idToken
                 val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                runCatching {
-                    Firebase.auth.signInWithCredential(authCredential).await()
+                withContext(NonCancellable) {
+                    runCatching {
+                        Firebase.auth.signInWithCredential(authCredential).await()
+                    }
+                    val fbUser = Firebase.auth.currentUser
+                    PreferencesManager(context.applicationContext).setSignedInGoogleAccount(
+                        email = fbUser?.email ?: googleCred.id,
+                        displayName = fbUser?.displayName ?: googleCred.displayName ?: "",
+                        uid = fbUser?.uid ?: "google_${googleCred.id.lowercase().hashCode().toUInt()}"
+                    )
                 }
-                val fbUser = Firebase.auth.currentUser
-                PreferencesManager(context.applicationContext).setSignedInGoogleAccount(
-                    email = fbUser?.email ?: googleCred.id,
-                    displayName = fbUser?.displayName ?: googleCred.displayName ?: "",
-                    uid = fbUser?.uid ?: "google_${googleCred.id.lowercase().hashCode().toUInt()}"
-                )
                 onAuthSuccess()
             } else {
                 onUnauthenticated()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             onUnauthenticated()
         }
@@ -172,9 +187,10 @@ fun onGoogleSignInClicked(
 ) {
     val clientId = resolveWebClientId(context)
     val activityContext = context.findActivity() ?: context
+    val authScope = resolveAuthScope(context, scope)
     val prefsManager = PreferencesManager(context.applicationContext)
 
-    scope.launch {
+    authScope.launch {
         try {
             // 1. Primary path: GetSignInWithGoogleOption via Jetpack CredentialManager
             val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
@@ -184,6 +200,8 @@ fun onGoogleSignInClicked(
 
             val result = try {
                 credentialManager.getCredential(activityContext, primaryRequest)
+            } catch (primaryError: CancellationException) {
+                throw primaryError
             } catch (primaryError: Exception) {
                 if (primaryError is GetCredentialCancellationException) {
                     throw primaryError
@@ -206,17 +224,21 @@ fun onGoogleSignInClicked(
                 val googleCred = GoogleIdTokenCredential.createFrom(credential.data)
                 val googleIdToken = googleCred.idToken
                 val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                runCatching {
-                    Firebase.auth.signInWithCredential(authCredential).await()
-                }.onFailure { fbErr ->
-                    Log.w("Auth", "Firebase signInWithCredential warning (using verified GoogleIdTokenCredential): ${fbErr.message}")
+                // Execute Firebase sign-in & DataStore persistence in NonCancellable so navigation
+                // triggered by FirebaseAuth.AuthStateListener cannot cancel completion mid-flight.
+                withContext(NonCancellable) {
+                    runCatching {
+                        Firebase.auth.signInWithCredential(authCredential).await()
+                    }.onFailure { fbErr ->
+                        Log.w("Auth", "Firebase signInWithCredential warning (using verified GoogleIdTokenCredential): ${fbErr.message}")
+                    }
+                    val fbUser = Firebase.auth.currentUser
+                    prefsManager.setSignedInGoogleAccount(
+                        email = fbUser?.email ?: googleCred.id,
+                        displayName = fbUser?.displayName ?: googleCred.displayName ?: "",
+                        uid = fbUser?.uid ?: "google_${googleCred.id.lowercase().hashCode().toUInt()}"
+                    )
                 }
-                val fbUser = Firebase.auth.currentUser
-                prefsManager.setSignedInGoogleAccount(
-                    email = fbUser?.email ?: googleCred.id,
-                    displayName = fbUser?.displayName ?: googleCred.displayName ?: "",
-                    uid = fbUser?.uid ?: "google_${googleCred.id.lowercase().hashCode().toUInt()}"
-                )
                 onAuthSuccess()
             } else {
                 if (onFallbackSystemAccountPicker != null) {
@@ -228,6 +250,9 @@ fun onGoogleSignInClicked(
         } catch (e: GetCredentialCancellationException) {
             Log.w("Auth", "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
             onAuthCancelled()
+        } catch (e: CancellationException) {
+            // Never log composition/lifecycle cancellation as an auth failure or launch fallback pickers.
+            throw e
         } catch (e: Exception) {
             Log.e("Auth", "CredentialManager Google Sign-In failed, falling back to Android System Google Account Picker", e)
             if (onFallbackSystemAccountPicker != null) {
@@ -245,7 +270,8 @@ fun signOutFromPaperFlow(
     scope: CoroutineScope,
     onSignOutComplete: () -> Unit = {}
 ) {
-    scope.launch {
+    val authScope = if (context != null) resolveAuthScope(context, scope) else scope
+    authScope.launch {
         withContext(NonCancellable) {
             try {
                 credentialManager.clearCredentialState(ClearCredentialStateRequest())
@@ -286,12 +312,14 @@ fun AuthScreen(
         isLoading = false
         val selectedAccountName = activityResult.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
         if (activityResult.resultCode == Activity.RESULT_OK && !selectedAccountName.isNullOrBlank()) {
-            scope.launch {
-                prefsManager.setSignedInGoogleAccount(
-                    email = selectedAccountName,
-                    displayName = selectedAccountName.substringBefore("@").replaceFirstChar { it.uppercase() },
-                    uid = "google_${selectedAccountName.lowercase().hashCode().toUInt()}"
-                )
+            resolveAuthScope(context, scope).launch {
+                withContext(NonCancellable) {
+                    prefsManager.setSignedInGoogleAccount(
+                        email = selectedAccountName,
+                        displayName = selectedAccountName.substringBefore("@").replaceFirstChar { it.uppercase() },
+                        uid = "google_${selectedAccountName.lowercase().hashCode().toUInt()}"
+                    )
+                }
                 onAuthSuccess()
             }
         } else if (activityResult.resultCode != Activity.RESULT_CANCELED) {
@@ -557,12 +585,14 @@ fun AuthScreen(
                                 onClick = {
                                     val trimmedEmail = googleEmailInput.trim()
                                     if (trimmedEmail.contains("@") && trimmedEmail.contains(".")) {
-                                        scope.launch {
-                                            prefsManager.setSignedInGoogleAccount(
-                                                email = trimmedEmail,
-                                                displayName = googleNameInput.trim(),
-                                                uid = "google_${trimmedEmail.lowercase().hashCode().toUInt()}"
-                                            )
+                                        resolveAuthScope(context, scope).launch {
+                                            withContext(NonCancellable) {
+                                                prefsManager.setSignedInGoogleAccount(
+                                                    email = trimmedEmail,
+                                                    displayName = googleNameInput.trim(),
+                                                    uid = "google_${trimmedEmail.lowercase().hashCode().toUInt()}"
+                                                )
+                                            }
                                             showDirectGoogleEmailSheet = false
                                             onAuthSuccess()
                                         }
