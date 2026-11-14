@@ -438,9 +438,13 @@ class PaperFlowViewModel(
         moodTag: String,
         isFavorite: Boolean
     ) {
-        if (title.isBlank()) {
-            _uiBannerMessage.value = "Please enter a title."
-            return
+        val resolvedTitle = title.trim().ifBlank {
+            primaryContent.trim()
+                .lineSequence()
+                .firstOrNull { it.isNotBlank() }
+                ?.take(42)
+                ?.trim()
+                ?: if (itemType == VaultItemType.GALLERY) "Photo Memory" else "Quick Note"
         }
         viewModelScope.launch {
             try {
@@ -448,7 +452,7 @@ class PaperFlowViewModel(
                     userId = currentUserId,
                     existingId = existingId,
                     itemType = itemType,
-                    title = title,
+                    title = resolvedTitle,
                     primaryContent = primaryContent,
                     secondaryMetadata = secondaryMetadata,
                     websiteOrLocation = websiteOrLocation,
@@ -459,7 +463,7 @@ class PaperFlowViewModel(
                     isFavorite = isFavorite
                 )
                 refreshStorageAndBatteryMetrics()
-                _uiBannerMessage.value = "Saved to private on-device storage & indexed locally."
+                _uiBannerMessage.value = "Saved & indexed locally."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

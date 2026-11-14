@@ -107,41 +107,52 @@ fun SanctuaryScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // 1. Top Brand Header with Settings shortcut & honest system status
+            // 1. Minimalist Top Bar ("Seam" + Settings shortcut)
             item {
-                SeamTopHeader(
-                    statusLabel = backgroundStatus.pillLabel,
-                    isStatusActive = backgroundStatus.isAnalyzingOrSyncing,
-                    reducedMotion = preferences.reducedMotionEnabled,
-                    onSettingsClick = { onNavigateToTab(PaperFlowTab.SETTINGS) }
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Seam",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = SeamWarmIvory
+                    )
+                    SeamTopHeader(
+                        statusLabel = "",
+                        isStatusActive = false,
+                        reducedMotion = preferences.reducedMotionEnabled,
+                        onSettingsClick = { onNavigateToTab(PaperFlowTab.SETTINGS) }
+                    )
+                }
             }
 
-            // 2. Two-line greeting / positioning statement (no forced motivational copy)
+            // 2. Clean Greeting
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = "Your space,",
+                        text = "Your space",
                         style = MaterialTheme.typography.displayLarge,
                         color = SeamWarmIvory
                     )
                     Text(
-                        text = "A quieter place for the things that matter.",
-                        style = MaterialTheme.typography.bodyLarge,
+                        text = "Photos, notes & passwords in one quiet place.",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = SeamMutedGrey
                     )
                 }
             }
 
-            // 3. Global search field near the top with visible filter affordance
+            // 3. Minimal Global Search Bar
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(54.dp)
+                        .height(52.dp)
                         .seamPressableGlassCard(
                             reducedMotion = preferences.reducedMotionEnabled,
-                            shape = RoundedCornerShape(22.dp),
+                            shape = RoundedCornerShape(24.dp),
                             onClick = { onNavigateToTab(PaperFlowTab.SEARCH) }
                         )
                         .padding(horizontal = 16.dp)
@@ -158,44 +169,30 @@ fun SanctuaryScreen(
                             imageVector = Icons.Outlined.Search,
                             contentDescription = "Search",
                             tint = SeamMutedGrey,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                         Text(
-                            text = "Search memories, thoughts and ideas",
+                            text = "Search photos, notes or tags",
                             style = MaterialTheme.typography.bodyLarge,
                             color = SeamMutedGrey,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-
-                    IconButton(
-                        onClick = { onNavigateToTab(PaperFlowTab.SEARCH) },
-                        modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("home_search_filter_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Tune,
-                            contentDescription = "Search filters",
-                            tint = SeamSilver,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
                 }
             }
 
-            // 4. Featured Memory Constellation Card (700–1200ms draw-in then settle; no video autoplay!)
+            // 4. Featured Constellation Hero Card
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(196.dp)
+                        .height(168.dp)
                         .seamPressableGlassCard(
                             reducedMotion = preferences.reducedMotionEnabled,
                             shape = RoundedCornerShape(24.dp),
                             elevated = true,
-                            accentBorder = SeamLavenderAccent.copy(alpha = 0.55f),
+                            accentBorder = SeamLavenderAccent.copy(alpha = 0.50f),
                             onClick = { onNavigateToTab(PaperFlowTab.GALLERY) }
                         )
                         .testTag("home_constellation_hero_card")
@@ -209,20 +206,19 @@ fun SanctuaryScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(22.dp),
+                            .padding(20.dp),
                         verticalArrangement = Arrangement.Bottom
                     ) {
                         Text(
-                            text = "A constellation\nof your moments.",
+                            text = "Memories",
                             style = MaterialTheme.typography.headlineLarge.copy(
-                                fontSize = 25.sp,
-                                lineHeight = 31.sp
+                                fontSize = 24.sp,
+                                lineHeight = 28.sp
                             ),
                             color = SeamWarmIvory
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Bring the little pieces together.",
+                            text = if (galleryCount > 0) "$galleryCount photos" else "Tap to open photo library",
                             style = MaterialTheme.typography.bodyMedium,
                             color = SeamMutedGrey
                         )
@@ -230,24 +226,13 @@ fun SanctuaryScreen(
                 }
             }
 
-            // 5. Section: YOUR SPACE — Three Core Feature Cards with full-row tap targets
+            // 5. Three Clean Core Space Cards
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "YOUR SPACE",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SeamMutedGrey,
-                        modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)
-                    )
-
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeFeatureRowCard(
                         icon = Icons.Outlined.PhotoLibrary,
                         title = "Memories",
-                        subtitle = if (galleryCount > 0) {
-                            "Photos, moments and places · $galleryCount saved"
-                        } else {
-                            "Photos, moments and places"
-                        },
+                        subtitle = if (galleryCount > 0) "$galleryCount photos" else "Auto-synced photos",
                         reducedMotion = preferences.reducedMotionEnabled,
                         testTag = "feature_card_memories",
                         onClick = { onNavigateToTab(PaperFlowTab.GALLERY) }
@@ -255,12 +240,8 @@ fun SanctuaryScreen(
 
                     HomeFeatureRowCard(
                         icon = Icons.Outlined.Edit,
-                        title = "Notes & reflections",
-                        subtitle = if (notesCount > 0) {
-                            "Thoughts worth keeping · $notesCount notes"
-                        } else {
-                            "Thoughts worth keeping"
-                        },
+                        title = "Notes",
+                        subtitle = if (notesCount > 0) "$notesCount notes" else "Thoughts & writing",
                         reducedMotion = preferences.reducedMotionEnabled,
                         testTag = "feature_card_notes",
                         onClick = { onNavigateToTab(PaperFlowTab.NOTES) }
@@ -268,12 +249,8 @@ fun SanctuaryScreen(
 
                     HomeFeatureRowCard(
                         icon = Icons.Outlined.Lock,
-                        title = "Password vault",
-                        subtitle = if (isolatedVaultCount > 0) {
-                            "Credentials, kept private · $isolatedVaultCount protected"
-                        } else {
-                            "Credentials, kept private"
-                        },
+                        title = "Vault",
+                        subtitle = if (isolatedVaultCount > 0) "$isolatedVaultCount encrypted logins" else "Encrypted passwords",
                         reducedMotion = preferences.reducedMotionEnabled,
                         testTag = "feature_card_vault",
                         onClick = { onNavigateToTab(PaperFlowTab.PASSWORDS) }
@@ -281,55 +258,7 @@ fun SanctuaryScreen(
                 }
             }
 
-            // 6. Honest System Status Row (AI paused / indexing / local storage status)
-            item {
-                val kbUsed = (backgroundStatus.privateStorageBytes / 1024L).coerceAtLeast(0L)
-                val statusSummary = when {
-                    preferences.aiExecutionMode == AiExecutionMode.PAUSED ->
-                        "AI indexing paused · Local storage active (${backgroundStatus.privateFilesCount} files, $kbUsed KB)"
-                    backgroundStatus.isAnalyzingOrSyncing ->
-                        "Indexing local metadata in background · Vault excluded"
-                    else ->
-                        "Saved locally on device ($kbUsed KB) · Cloud backup ${if (preferences.isCloudBackupEnabled) "opt-in enabled" else "off by default"}"
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .seamGlassSurface(shape = RoundedCornerShape(18.dp))
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = statusSummary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SeamMutedGrey,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (preferences.aiExecutionMode == AiExecutionMode.PAUSED) "Settings" else "Index now",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SeamLavenderAccent,
-                        modifier = Modifier
-                            .seamPressableGlassCard(
-                                reducedMotion = preferences.reducedMotionEnabled,
-                                shape = RoundedCornerShape(10.dp),
-                                elevated = true,
-                                onClick = {
-                                    if (preferences.aiExecutionMode == AiExecutionMode.PAUSED) {
-                                        onNavigateToTab(PaperFlowTab.SETTINGS)
-                                    } else {
-                                        onTriggerBackgroundSyncAndAi()
-                                    }
-                                }
-                            )
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            // 7. Recent items list (compact, never exposing sensitive vault secrets) or First-Run Empty State
+            // 6. Recent items or minimalist Empty State
             if (entries.isEmpty()) {
                 item {
                     Column(
@@ -337,40 +266,18 @@ fun SanctuaryScreen(
                             .fillMaxWidth()
                             .seamGlassSurface(shape = RoundedCornerShape(22.dp), elevated = true)
                             .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Start your local space",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = "Nothing saved yet",
+                            style = MaterialTheme.typography.titleMedium,
                             color = SeamWarmIvory
                         )
                         Text(
-                            text = "Tap the + button below to write a note, import a photo memory, or add a Keystore-encrypted credential. Everything stays on your device by default.",
+                            text = "Tap + to add a photo, note, or password.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = SeamMutedGrey
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(
-                                onClick = { onOpenNewEntryDialog(VaultItemType.NOTE) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = SeamWarmIvory,
-                                    contentColor = SeamNearBlack
-                                ),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("New note")
-                            }
-                            Button(
-                                onClick = { onOpenNewEntryDialog(VaultItemType.GALLERY) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = SeamElevatedSurface,
-                                    contentColor = SeamWarmIvory
-                                ),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Import memory")
-                            }
-                        }
                     }
                 }
             } else {

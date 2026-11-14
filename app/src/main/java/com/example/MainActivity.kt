@@ -4,8 +4,11 @@ import android.os.Build
 import android.os.Bundle
 import android.view.autofill.AutofillManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.animation.AnimatedVisibility
@@ -84,6 +87,7 @@ import com.example.data.local.PrivatePhoneStorageManager
 import com.example.data.local.VaultCredentialEntity
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
+import com.example.data.preferences.AiExecutionMode
 import com.example.data.preferences.PreferencesManager
 import com.example.data.preferences.ThemeModePreference
 import com.example.data.repository.PaperFlowRepository
@@ -272,6 +276,16 @@ fun AuthenticatedSanctuaryHost(
     var sanctuaryEditorState by remember { mutableStateOf<Pair<VaultItemType, VaultEntryEntity?>?>(null) }
     var credentialEditorState by remember { mutableStateOf<Pair<Boolean, VaultCredentialEntity?>>(false to null) }
 
+    val quickPhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 40)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            val useGemini = preferences.aiExecutionMode == AiExecutionMode.CLOUD_GEMINI_OPT_IN ||
+                preferences.hasConsentedToCloudAi
+            viewModel.importMultiplePickedPhotosWithAi(uris, useGemini)
+        }
+    }
+
     // Ask the Android device for Autofill & Auto-Save Password permission if not already enabled
     var showAutofillPermissionPrompt by remember(context) {
         val alreadyGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -378,7 +392,22 @@ fun AuthenticatedSanctuaryHost(
             floatingActionButton = {
                 if (currentTab != PaperFlowTab.SETTINGS) {
                     FloatingActionButton(
-                        onClick = { showQuickCreateSheet = true },
+                        onClick = {
+                            when (currentTab) {
+                                PaperFlowTab.GALLERY -> {
+                                    quickPhotoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                                PaperFlowTab.NOTES -> {
+                                    sanctuaryEditorState = VaultItemType.NOTE to null
+                                }
+                                PaperFlowTab.PASSWORDS -> {
+                                    credentialEditorState = true to null
+                                }
+                                else -> showQuickCreateSheet = true
+                            }
+                        },
                         containerColor = Color(0xE82A293B),
                         contentColor = SeamWarmIvory,
                         shape = RoundedCornerShape(22.dp),
@@ -740,7 +769,7 @@ fun AuthenticatedSanctuaryHost(
             }
         }
 
-        // One-Tap Capture Sheet ("Note", "Import memory", "Add credential" per Page 3)
+        // Minimalist Add Sheet ("Photos", "Note", "Password")
         if (showQuickCreateSheet) {
             SeamQuickCreateSheet(
                 reducedMotion = preferences.reducedMotionEnabled,
@@ -749,7 +778,9 @@ fun AuthenticatedSanctuaryHost(
                     sanctuaryEditorState = VaultItemType.NOTE to null
                 },
                 onImportMemory = {
-                    sanctuaryEditorState = VaultItemType.GALLERY to null
+                    quickPhotoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
                 },
                 onAddCredential = {
                     credentialEditorState = true to null

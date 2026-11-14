@@ -270,34 +270,28 @@ fun ReflectionsNotesScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Top Brand Header
-            item {
-                SeamTopHeader(
-                    statusLabel = "${noteEntries.size} notes",
-                    reducedMotion = reducedMotion,
-                    onSettingsClick = onOpenSettings
-                )
-            }
-
-            // 2. Page Title & Subtitle ("Notes & reflections" / "Thoughts don't need to be perfectly formed.")
+            // 1. Minimalist Notes Header
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "Notes & reflections",
-                            style = MaterialTheme.typography.displayLarge,
+                            text = "Notes",
+                            style = MaterialTheme.typography.displayLarge.copy(
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = SeamWarmIvory
                         )
                         Text(
-                            text = "Thoughts don't need to be perfectly formed.",
-                            style = MaterialTheme.typography.bodyLarge,
+                            text = "${noteEntries.size} saved",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = SeamMutedGrey
                         )
                     }
@@ -490,16 +484,16 @@ fun ReflectionsNotesScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = if (noteEntries.isEmpty()) "No reflections yet" else "No matching notes",
+                            text = if (noteEntries.isEmpty()) "No notes yet" else "No matching notes",
                             style = MaterialTheme.typography.titleLarge,
                             color = SeamWarmIvory,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = if (noteEntries.isEmpty()) {
-                                "Your mindful writing space is ready. Tap '+ New note' above to capture your first personal reflection in private on-device storage."
+                                "Tap + to capture a quick note."
                             } else {
-                                "No notes matched your current search or folder filter."
+                                "Try another search term or folder."
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = SeamMutedGrey
@@ -578,7 +572,7 @@ fun ReflectionsNotesScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(64.dp))
+                Spacer(modifier = Modifier.height(92.dp))
             }
         }
     }
@@ -1125,32 +1119,26 @@ fun PasswordsVaultScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Top Brand Header
-            item {
-                SeamTopHeader(
-                    statusLabel = if (isVaultSessionUnlocked) "Vault unlocked" else "Vault protected",
-                    reducedMotion = reducedMotion,
-                    onSettingsClick = onOpenSettings
-                )
-            }
-
-            // 2. Title & Subtitle ("Your vault" / "Credentials, protected by design.")
+            // 1. Minimalist Vault Header
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "Your vault",
-                            style = MaterialTheme.typography.displayLarge,
+                            text = "Vault",
+                            style = MaterialTheme.typography.displayLarge.copy(
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = SeamWarmIvory
                         )
                         Text(
-                            text = "Credentials, protected by design.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = SeamMutedGrey
+                            text = if (isVaultSessionUnlocked) "Unlocked · ${credentials.size} logins" else "Protected · ${credentials.size} logins",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isVaultSessionUnlocked) SeamSuccessSage else SeamMutedGrey
                         )
                     }
 
@@ -1159,7 +1147,7 @@ fun PasswordsVaultScreen(
                         modifier = Modifier.testTag("add_password_button")
                     ) {
                         Text(
-                            text = "+ Add login",
+                            text = "+ Add",
                             style = MaterialTheme.typography.labelLarge,
                             color = SeamLavenderAccent
                         )
@@ -1167,7 +1155,7 @@ fun PasswordsVaultScreen(
                 }
             }
 
-            // 3. VAULT HEALTH Glass Card (Room AES-256-GCM · Passwords masked by default)
+            // 2. VAULT HEALTH Glass Card (Room AES-256-GCM · Passwords masked by default)
             item {
                 Column(
                     modifier = Modifier
@@ -1177,8 +1165,8 @@ fun PasswordsVaultScreen(
                             elevated = true,
                             accentBorder = if (reusedCount == 0) null else SeamWarningAmber
                         )
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1186,41 +1174,37 @@ fun PasswordsVaultScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "VAULT HEALTH",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = SeamMutedGrey
+                            text = if (reusedCount == 0) "Vault All Clear" else "$reusedCount Reused Password Warning",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (reusedCount == 0) SeamWarmIvory else SeamWarningAmber,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             SeamGlassBadge(
-                                text = "Room AES-256-GCM",
+                                text = "AES-256",
                                 tint = SeamLavenderAccent,
                                 borderTint = SeamLavenderAccent.copy(alpha = 0.4f)
                             )
                             SeamGlassBadge(
-                                text = "Masked by default",
+                                text = "Masked",
                                 tint = SeamSilver
                             )
                         }
                     }
-                    Text(
-                        text = if (reusedCount == 0) "All clear" else "$reusedCount reused password warning",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = if (reusedCount == 0) SeamWarmIvory else SeamWarningAmber
-                    )
                     LinearProgressIndicator(
                         progress = { healthRatio },
                         color = if (reusedCount == 0) SeamWarmIvory else SeamWarningAmber,
                         trackColor = Color(0x40FFFFFF),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(7.dp)
+                            .height(6.dp)
                             .clip(RoundedCornerShape(4.dp))
                     )
                     Text(
                         text = if (reusedCount == 0) {
-                            "Encrypted inside Room (`seam_isolated_vault.db`) · Passwords stay masked unless verified."
+                            "Encrypted locally in Room · Passwords stay masked unless verified."
                         } else {
-                            "Computed locally · $reusedCount credentials share the same password fingerprint."
+                            "$reusedCount credentials share the same password fingerprint."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = SeamMutedGrey
@@ -1292,16 +1276,16 @@ fun PasswordsVaultScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = if (credentials.isEmpty()) "No saved logins yet" else "No matching logins",
+                            text = if (credentials.isEmpty()) "No saved logins" else "No matching logins",
                             style = MaterialTheme.typography.titleLarge,
                             color = SeamWarmIvory,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = if (credentials.isEmpty()) {
-                                "Your isolated Keystore AES-256-GCM vault is empty. Tap '+ Add login' or use the Save Password overlay above to store your first credential."
+                                "Tap + to save an encrypted login."
                             } else {
-                                "No credentials matched your current search or category filter."
+                                "Try another search term or category."
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = SeamMutedGrey
@@ -1439,7 +1423,7 @@ fun PasswordsVaultScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(64.dp))
+                Spacer(modifier = Modifier.height(92.dp))
             }
         }
     }
@@ -1870,34 +1854,38 @@ private fun SeamGoogleAutofillOverlayCard(
         )
     }
 
+    var expanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .seamGlassSurface(
                 shape = RoundedCornerShape(22.dp),
                 elevated = true,
-                accentBorder = SeamLavenderAccent
+                accentBorder = SeamLavenderAccent.copy(alpha = 0.45f)
             )
-            .padding(20.dp)
+            .padding(horizontal = 18.dp, vertical = 14.dp)
             .testTag("google_autofill_overlay_card"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "GOOGLE-STYLE AUTOFILL & SAVE OVERLAY",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SeamLavenderAccent
-                )
-                Text(
-                    text = "Automatic Autofill & Save Password",
-                    style = MaterialTheme.typography.titleLarge,
+                    text = "System Autofill",
+                    style = MaterialTheme.typography.titleMedium,
                     color = SeamWarmIvory,
                     fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (expanded) "Tap to collapse" else "Autofill & save across apps · Tap to open",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SeamMutedGrey
                 )
             }
             OutlinedButton(
@@ -1922,11 +1910,13 @@ private fun SeamGoogleAutofillOverlayCard(
                 modifier = Modifier.testTag("enable_system_autofill_button")
             ) {
                 Text(
-                    text = if (isSystemAutofillGranted) "Autofill Granted" else "Grant Permission",
+                    text = if (isSystemAutofillGranted) "Enabled" else "Enable",
                     style = MaterialTheme.typography.labelMedium
                 )
             }
         }
+
+        if (!expanded) return@Column
 
         Text(
             text = autofillBannerFeedback,

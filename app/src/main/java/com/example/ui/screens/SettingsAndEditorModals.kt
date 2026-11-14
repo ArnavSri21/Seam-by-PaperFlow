@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1059,108 +1060,101 @@ fun SeamQuickCreateSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "ONE-TAP CAPTURE",
-                style = MaterialTheme.typography.labelSmall,
-                color = SeamMutedGrey
+                text = "Add",
+                style = MaterialTheme.typography.headlineSmall,
+                color = SeamWarmIvory,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 4.dp)
             )
 
-            QuickCaptureRow(
-                icon = Icons.Outlined.Edit,
-                title = "Note",
-                subtitle = "Write a thought or Markdown reflection",
-                reducedMotion = reducedMotion,
-                testTag = "sheet_create_note",
-                onClick = {
-                    onDismiss()
-                    onCreateNote()
-                }
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                MinimalAddTile(
+                    icon = Icons.Outlined.PhotoLibrary,
+                    label = "Photos",
+                    reducedMotion = reducedMotion,
+                    testTag = "sheet_import_memory",
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        onDismiss()
+                        onImportMemory()
+                    }
+                )
+                MinimalAddTile(
+                    icon = Icons.Outlined.Edit,
+                    label = "Note",
+                    reducedMotion = reducedMotion,
+                    testTag = "sheet_create_note",
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        onDismiss()
+                        onCreateNote()
+                    }
+                )
+                MinimalAddTile(
+                    icon = Icons.Outlined.Lock,
+                    label = "Password",
+                    reducedMotion = reducedMotion,
+                    testTag = "sheet_add_credential",
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        onDismiss()
+                        onAddCredential()
+                    }
+                )
+            }
 
-            QuickCaptureRow(
-                icon = Icons.Outlined.PhotoLibrary,
-                title = "Import memory",
-                subtitle = "Add a photo into private storage or link URI",
-                reducedMotion = reducedMotion,
-                testTag = "sheet_import_memory",
-                onClick = {
-                    onDismiss()
-                    onImportMemory()
-                }
-            )
-
-            QuickCaptureRow(
-                icon = Icons.Outlined.Lock,
-                title = "Add credential",
-                subtitle = "Encrypt a login in your isolated Keystore vault",
-                reducedMotion = reducedMotion,
-                testTag = "sheet_add_credential",
-                onClick = {
-                    onDismiss()
-                    onAddCredential()
-                }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
         }
     }
 }
 
 @Composable
-private fun QuickCaptureRow(
+private fun MinimalAddTile(
     icon: ImageVector,
-    title: String,
-    subtitle: String,
+    label: String,
     reducedMotion: Boolean,
     testTag: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
+    Column(
+        modifier = modifier
             .seamPressableGlassCard(
                 reducedMotion = reducedMotion,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(22.dp),
                 elevated = true,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(vertical = 18.dp, horizontal = 10.dp)
             .testTag(testTag),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(44.dp)
                 .seamGlassSurface(shape = CircleShape, elevated = false),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = title,
-                tint = SeamSilver,
-                modifier = Modifier.size(18.dp)
+                contentDescription = label,
+                tint = SeamWarmIvory,
+                modifier = Modifier.size(20.dp)
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = SeamWarmIvory
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = SeamMutedGrey
-            )
-        }
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = SeamMutedGrey
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            color = SeamWarmIvory,
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -1186,13 +1180,10 @@ fun VaultEntryEditorDialog(
     ) -> Unit
 ) {
     val sanitizedInitial = if (initialType == VaultItemType.PASSWORD) VaultItemType.NOTE else initialType
-    var selectedType by remember {
-        mutableStateOf(
-            existingEntry?.itemType?.let {
-                runCatching { VaultItemType.valueOf(it) }.getOrDefault(sanitizedInitial)
-            }?.takeIf { it != VaultItemType.PASSWORD } ?: sanitizedInitial
-        )
-    }
+    val selectedType = existingEntry?.itemType?.let {
+        runCatching { VaultItemType.valueOf(it) }.getOrDefault(sanitizedInitial)
+    }?.takeIf { it != VaultItemType.PASSWORD } ?: sanitizedInitial
+
     var title by remember { mutableStateOf(existingEntry?.title ?: "") }
     var primaryContent by remember { mutableStateOf(existingEntry?.primaryContent ?: "") }
     var secondaryMetadata by remember { mutableStateOf(existingEntry?.secretValue ?: "") }
@@ -1200,13 +1191,14 @@ fun VaultEntryEditorDialog(
     var folderOrAlbum by remember {
         mutableStateOf(
             existingEntry?.folderOrAlbum?.ifBlank { null }
-                ?: if (selectedType == VaultItemType.GALLERY) "Visual Archive" else "Reflections"
+                ?: if (selectedType == VaultItemType.GALLERY) "Recents" else "Notes"
         )
     }
     var mediaPath by remember { mutableStateOf(existingEntry?.mediaPath ?: "") }
-    var category by remember { mutableStateOf(existingEntry?.category ?: "Mindfulness") }
-    var moodTag by remember { mutableStateOf(existingEntry?.moodTag ?: "Serene") }
+    var category by remember { mutableStateOf(existingEntry?.category ?: "Moments") }
+    var moodTag by remember { mutableStateOf(existingEntry?.moodTag ?: "Calm") }
     val isFavorite by remember { mutableStateOf(existingEntry?.isFavorite ?: false) }
+    var showMoreDetails by remember { mutableStateOf(false) }
 
     val photoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -1218,11 +1210,22 @@ fun VaultEntryEditorDialog(
         }
     }
 
+    val isEditing = existingEntry != null && existingEntry.id > 0L
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = Color(0xF5141520),
+        titleContentColor = SeamWarmIvory,
+        textContentColor = SeamSilver,
+        shape = RoundedCornerShape(28.dp),
         title = {
             Text(
-                text = if (existingEntry != null && existingEntry.id > 0L) "Edit Entry" else "New Entry",
+                text = when {
+                    isEditing && selectedType == VaultItemType.GALLERY -> "Edit Photo"
+                    isEditing -> "Edit Note"
+                    selectedType == VaultItemType.GALLERY -> "Add Photo"
+                    else -> "New Note"
+                },
                 style = MaterialTheme.typography.headlineSmall
             )
         },
@@ -1231,90 +1234,40 @@ fun VaultEntryEditorDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(VaultItemType.NOTE, VaultItemType.GALLERY).forEach { type ->
-                        FilterChip(
-                            selected = selectedType == type,
-                            onClick = { selectedType = type },
-                            label = { Text(if (type == VaultItemType.NOTE) "Note" else "Memory") }
-                        )
-                    }
-                }
-
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = {
-                        Text(
-                            if (selectedType == VaultItemType.NOTE) "Note Title"
-                            else "Memory Title"
-                        )
-                    },
+                    label = { Text("Title (optional)") },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("editor_title_input")
                 )
 
                 OutlinedTextField(
-                    value = folderOrAlbum,
-                    onValueChange = { folderOrAlbum = it },
-                    label = {
-                        Text(
-                            if (selectedType == VaultItemType.NOTE) "Collection / Folder"
-                            else "Album / Collection"
-                        )
-                    },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("editor_folder_input")
-                )
-
-                OutlinedTextField(
                     value = primaryContent,
                     onValueChange = { primaryContent = it },
                     label = {
-                        Text(
-                            if (selectedType == VaultItemType.NOTE) "Thoughts & Markdown"
-                            else "Caption & Story"
-                        )
+                        Text(if (selectedType == VaultItemType.NOTE) "Write a note…" else "Caption…")
                     },
                     minLines = 4,
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("editor_content_input")
                 )
 
-                OutlinedTextField(
-                    value = websiteOrLocation,
-                    onValueChange = { websiteOrLocation = it },
-                    label = { Text("Opt-in Location / Context") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (selectedType == VaultItemType.GALLERY) {
-                    OutlinedTextField(
-                        value = secondaryMetadata,
-                        onValueChange = { secondaryMetadata = it },
-                        label = { Text("Source / Camera Note (Optional)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Button(
+                if (selectedType == VaultItemType.GALLERY && mediaPath.isBlank()) {
+                    OutlinedButton(
                         onClick = {
                             photoLauncher.launch(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
                         },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SeamElevatedSurface,
-                            contentColor = SeamWarmIvory
-                        ),
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
@@ -1323,28 +1276,64 @@ fun VaultEntryEditorDialog(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            if (mediaPath.isNotBlank()) "Photo Copied to Private Storage ✓"
-                            else "Select Photo via Photo Picker"
-                        )
+                        Text("Choose Photo")
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = category,
-                        onValueChange = { category = it },
-                        label = { Text("Tag") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = moodTag,
-                        onValueChange = { moodTag = it },
-                        label = { Text("Mood") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                // Optional fields neatly collapsed by default
+                Text(
+                    text = if (showMoreDetails) "Hide details ▲" else "Album, tag & location ▼",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SeamLavenderAccent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { showMoreDetails = !showMoreDetails }
+                        .padding(vertical = 4.dp)
+                )
+
+                AnimatedVisibility(visible = showMoreDetails) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = folderOrAlbum,
+                            onValueChange = { folderOrAlbum = it },
+                            label = {
+                                Text(if (selectedType == VaultItemType.NOTE) "Folder" else "Album")
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("editor_folder_input")
+                        )
+
+                        OutlinedTextField(
+                            value = websiteOrLocation,
+                            onValueChange = { websiteOrLocation = it },
+                            label = { Text("Location (optional)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = category,
+                                onValueChange = { category = it },
+                                label = { Text("Tag") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = moodTag,
+                                onValueChange = { moodTag = it },
+                                label = { Text("Mood") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             }
         },
@@ -1365,14 +1354,19 @@ fun VaultEntryEditorDialog(
                         isFavorite
                     )
                 },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SeamWarmIvory,
+                    contentColor = SeamNearBlack
+                ),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.testTag("editor_save_button")
             ) {
-                Text("Save Locally")
+                Text("Save")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = SeamMutedGrey)
             }
         }
     )
@@ -1402,7 +1396,7 @@ fun VaultCredentialEditorDialog(
     var rawNotes by remember { mutableStateOf(initialDecryptedNotes) }
     var domainOrUrl by remember { mutableStateOf(existingCredential?.domainOrUrl ?: "") }
     var category by remember { mutableStateOf(existingCredential?.category ?: "Security") }
-    var generatorLength by remember { mutableIntStateOf(20) }
+    var showMoreOptions by remember { mutableStateOf(false) }
 
     val strengthScore = remember(rawPassword) {
         if (rawPassword.isBlank()) 0 else KeystoreVaultCrypto.scorePasswordEntropy(rawPassword)
@@ -1425,23 +1419,22 @@ fun VaultCredentialEditorDialog(
         containerColor = Color(0xF5141520),
         titleContentColor = SeamWarmIvory,
         textContentColor = SeamSilver,
+        shape = RoundedCornerShape(28.dp),
         title = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = if (existingCredential != null) "Edit Vault Credential" else "New Vault Credential",
+                    text = if (existingCredential != null) "Edit Password" else "Add Password",
                     style = MaterialTheme.typography.headlineSmall
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SeamGlassBadge(
-                        text = "Room AES-256-GCM",
-                        tint = SeamLavenderAccent,
-                        borderTint = SeamLavenderAccent.copy(alpha = 0.4f)
-                    )
-                    SeamGlassBadge(
-                        text = "Masked by default",
-                        tint = SeamSilver
-                    )
-                }
+                SeamGlassBadge(
+                    text = "Encrypted",
+                    tint = SeamLavenderAccent,
+                    borderTint = SeamLavenderAccent.copy(alpha = 0.4f)
+                )
             }
         },
         text = {
@@ -1449,19 +1442,14 @@ fun VaultCredentialEditorDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "Encrypted locally with Android Keystore AES-256-GCM inside Room. Excluded from AI, search, and default backups.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SeamMutedGrey
-                )
-
                 OutlinedTextField(
                     value = serviceTitle,
                     onValueChange = { serviceTitle = it },
-                    label = { Text("Service Name (e.g., Google, Email)") },
+                    label = { Text("App or site name") },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("vault_service_input")
@@ -1470,8 +1458,9 @@ fun VaultCredentialEditorDialog(
                 OutlinedTextField(
                     value = accountUsername,
                     onValueChange = { accountUsername = it },
-                    label = { Text("Username / Email") },
+                    label = { Text("Username or email") },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("vault_username_input")
@@ -1480,29 +1469,44 @@ fun VaultCredentialEditorDialog(
                 OutlinedTextField(
                     value = rawPassword,
                     onValueChange = { rawPassword = it },
-                    label = { Text("Password (Masked by default)") },
+                    label = { Text("Password") },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
                     visualTransformation = if (isPasswordVisible) {
                         VisualTransformation.None
                     } else {
                         PasswordVisualTransformation()
                     },
                     trailingIcon = {
-                        IconButton(
-                            onClick = { isPasswordVisible = !isPasswordVisible },
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("vault_editor_toggle_password_visibility")
-                        ) {
-                            Icon(
-                                imageVector = if (isPasswordVisible) {
-                                    Icons.Outlined.VisibilityOff
-                                } else {
-                                    Icons.Outlined.Visibility
-                                },
-                                contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
-                                tint = SeamSilver
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { rawPassword = onGeneratePassword(20, true) },
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("vault_generate_password_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Key,
+                                    contentDescription = "Generate strong password",
+                                    tint = SeamLavenderAccent
+                                )
+                            }
+                            IconButton(
+                                onClick = { isPasswordVisible = !isPasswordVisible },
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("vault_editor_toggle_password_visibility")
+                            ) {
+                                Icon(
+                                    imageVector = if (isPasswordVisible) {
+                                        Icons.Outlined.VisibilityOff
+                                    } else {
+                                        Icons.Outlined.Visibility
+                                    },
+                                    contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                                    tint = SeamSilver
+                                )
+                            }
                         }
                     },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
@@ -1518,71 +1522,53 @@ fun VaultCredentialEditorDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Local strength assessment",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SeamMutedGrey
-                        )
-                        SeamGlassBadge(
-                            text = "${strengthTier.label} · $strengthScore%",
-                            tint = strengthColor,
-                            borderTint = strengthColor.copy(alpha = 0.45f)
+                            text = "AES-256-GCM · ${strengthTier.label} ($strengthScore%)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = strengthColor
                         )
                     }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    listOf(16, 20, 28).forEach { len ->
-                        FilterChip(
-                            selected = generatorLength == len,
-                            onClick = { generatorLength = len },
-                            label = { Text("${len}c") }
+                Text(
+                    text = if (showMoreOptions) "Hide extra fields ▲" else "Website & notes ▼",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SeamLavenderAccent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { showMoreOptions = !showMoreOptions }
+                        .padding(vertical = 2.dp)
+                )
+
+                AnimatedVisibility(visible = showMoreOptions) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = domainOrUrl,
+                            onValueChange = { domainOrUrl = it },
+                            label = { Text("Website URL (optional)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
                         )
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-                    OutlinedButton(
-                        onClick = {
-                            rawPassword = onGeneratePassword(generatorLength, true)
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.testTag("vault_generate_password_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Key,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+
+                        OutlinedTextField(
+                            value = category,
+                            onValueChange = { category = it },
+                            label = { Text("Category") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Generate")
+
+                        OutlinedTextField(
+                            value = rawNotes,
+                            onValueChange = { rawNotes = it },
+                            label = { Text("Notes (optional)") },
+                            minLines = 2,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
-
-                OutlinedTextField(
-                    value = domainOrUrl,
-                    onValueChange = { domainOrUrl = it },
-                    label = { Text("Website (e.g., accounts.google.com)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = category,
-                    onValueChange = { category = it },
-                    label = { Text("Folder / Category") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = rawNotes,
-                    onValueChange = { rawNotes = it },
-                    label = { Text("Optional Encrypted Notes") },
-                    minLines = 2,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         },
         confirmButton = {
@@ -1601,14 +1587,19 @@ fun VaultCredentialEditorDialog(
                     }
                 },
                 enabled = serviceTitle.isNotBlank() && rawPassword.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SeamWarmIvory,
+                    contentColor = SeamNearBlack
+                ),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.testTag("vault_save_button")
             ) {
-                Text("Encrypt & Save")
+                Text("Save")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = SeamMutedGrey)
             }
         }
     )
