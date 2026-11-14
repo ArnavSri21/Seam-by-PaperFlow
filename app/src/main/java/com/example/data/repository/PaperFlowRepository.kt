@@ -11,6 +11,7 @@ import com.example.data.ai.LocalAiAnalyzer
 import com.example.data.ai.MindfulAiService
 import com.example.data.ai.SemanticSearchExpansion
 import com.example.data.cloud.CloudSyncRepository
+import com.example.data.local.DevicePhotoAsset
 import com.example.data.local.IsolatedVaultDao
 import com.example.data.local.PrivatePhoneStorageManager
 import com.example.data.local.VaultCredentialEntity
@@ -18,11 +19,13 @@ import com.example.data.local.VaultDao
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
 import com.example.data.preferences.AiExecutionMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.UUID
 
 data class DeviceBatteryHealth(
@@ -40,6 +43,13 @@ data class BackgroundSyncSummary(
     val localSnapshotSaved: Boolean,
     val skippedDueToBatterySaver: Boolean,
     val statusMessage: String
+)
+
+data class AutoImportResult(
+    val newlyImportedCount: Int,
+    val aiTaggedCount: Int,
+    val skippedDuplicateCount: Int,
+    val aiErrorMessage: String? = null
 )
 
 /**
@@ -222,6 +232,7 @@ class PaperFlowRepository(
         val encryptedPass = keystoreCrypto.encryptSecret(rawPassword)
         val encryptedNotes = keystoreCrypto.encryptSecret(rawNotes)
         val fingerprint = keystoreCrypto.computeLocalReuseFingerprint(rawPassword)
+        val strengthScore = keystoreCrypto.computePasswordStrengthScore(rawPassword)
 
         val entity = VaultCredentialEntity(
             id = existingId ?: 0L,
@@ -232,6 +243,9 @@ class PaperFlowRepository(
             domainOrUrl = domainOrUrl.trim(),
             category = category.trim().ifBlank { "Security" },
             reuseFingerprint = fingerprint,
+            passwordStrengthScore = strengthScore,
+            maskedPreview = "••••••••••••",
+            encryptionAlgorithm = "AES-256-GCM",
             createdAtMillis = now,
             updatedAtMillis = now
         )
@@ -419,13 +433,273 @@ class PaperFlowRepository(
             category = analysis.category.ifBlank { entry.category },
             moodTag = analysis.moodTag.ifBlank { entry.moodTag },
             aiSummary = analysis.aiSummary,
-            aiKeywords = analysis.aiKeywords,
+            aiKeywords = mergeKeywords(analysis.aiKeywords, localAiAnalyzer.analyzeLocally(entry).aiKeywords),
             isAnalyzed = true,
             updatedAtMillis = System.currentTimeMillis()
         )
         vaultDao.updateEntry(updated)
         writeLocalAutoSnapshot(entry.userId)
         Result.success(updated)
+    }
+
+    suspend fun autoImportDevicePhotos(
+        userId: String,
+        assets: List<DevicePhotoAsset>,
+        runGeminiVision: Boolean,
+        onProgress: (processed: Int, total: Int, label: String) -> Unit = { _, _, _ -> }
+    ): AutoImportResult = withContext(Dispatchers.IO) {
+        val existingGallery = vaultDao.getEntriesOnce()
+            .filter { it.itemType == VaultItemType.GALLERY.name }
+        val existingKeys = existingGallery.mapNotNull { entry ->
+            entry.secretValue.takeIf { it.startsWith("mediastore:") }
+        }.toHashSet()
+        val existingTitleDates = existingGallery.map { "${it.title}|${it.createdAtMillis}" }.toHashSet()
+
+        val newAssets = assets.filter { asset ->
+            !existingKeys.contains(asset.dedupeKey) &&
+                !existingTitleDates.contains("${cleanPhotoTitle(asset.displayName, asset.mediaStoreId)}|${asset.dateTakenMillis}")
+        }
+        val skippedCount = assets.size - newAssets.size
+        if (newAssets.isEmpty()) {
+            return@withContext AutoImportResult(
+                newlyImportedCount = 0,
+                aiTaggedCount = 0,
+                skippedDuplicateCount = skippedCount
+            )
+        }
+
+        var imported = 0
+        var aiTagged = 0
+        var lastAiError: String? = null
+        val total = newAssets.size
+
+        newAssets.forEachIndexed { idx, asset ->
+            val title = cleanPhotoTitle(asset.displayName, asset.mediaStoreId)
+            onProgress(idx + 1, total, "Importing & AI-tagging $title…")
+            try {
+                val copiedPath = storageManager.copyPickedUriToPrivateStorage(asset.contentUri)
+                val destFile = File(copiedPath)
+                if (!destFile.exists() || destFile.length() == 0L) return@forEachIndexed
+
+                val ocrMeta = localAiAnalyzer.extractLocalMediaMetadataAndOcr(copiedPath, title)
+                val baseEntry = VaultEntryEntity(
+                    cloudId = "seam_${UUID.randomUUID().toString().replace("-", "_")}",
+                    userId = userId,
+                    itemType = VaultItemType.GALLERY.name,
+                    title = title,
+                    primaryContent = "",
+                    secretValue = asset.dedupeKey,
+                    websiteOrLocation = "",
+                    folderOrAlbum = asset.albumName.ifBlank { "Recents" },
+                    mediaPath = copiedPath,
+                    ocrExtractedText = ocrMeta,
+                    category = "Moments",
+                    moodTag = "Luminous",
+                    createdAtMillis = asset.dateTakenMillis,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+
+                val localAnalysis = localAiAnalyzer.analyzeLocally(baseEntry)
+                var finalEntry = baseEntry.copy(
+                    category = localAnalysis.category,
+                    moodTag = localAnalysis.moodTag,
+                    aiSummary = localAnalysis.aiSummary,
+                    aiKeywords = localAnalysis.aiKeywords,
+                    isAnalyzed = true
+                )
+
+                if (runGeminiVision) {
+                    val cloudResult = aiService.analyzeEntry(finalEntry)
+                    if (cloudResult.isSuccess) {
+                        val ai = cloudResult.getOrThrow()
+                        finalEntry = finalEntry.copy(
+                            category = ai.category.ifBlank { finalEntry.category },
+                            moodTag = ai.moodTag.ifBlank { finalEntry.moodTag },
+                            aiSummary = ai.aiSummary.ifBlank { finalEntry.aiSummary },
+                            aiKeywords = mergeKeywords(ai.aiKeywords, localAnalysis.aiKeywords),
+                            isAnalyzed = true
+                        )
+                        aiTagged++
+                    } else {
+                        lastAiError = cloudResult.exceptionOrNull()?.localizedMessage
+                    }
+                } else {
+                    aiTagged++
+                }
+
+                vaultDao.insertEntry(finalEntry)
+                imported++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Skip unreadable/corrupt system URI cleanly
+            }
+        }
+
+        if (imported > 0) {
+            writeLocalAutoSnapshot(userId)
+        }
+
+        AutoImportResult(
+            newlyImportedCount = imported,
+            aiTaggedCount = aiTagged,
+            skippedDuplicateCount = skippedCount,
+            aiErrorMessage = lastAiError
+        )
+    }
+
+    suspend fun importPickedUrisWithAi(
+        userId: String,
+        uris: List<Uri>,
+        runGeminiVision: Boolean,
+        onProgress: (processed: Int, total: Int, label: String) -> Unit = { _, _, _ -> }
+    ): AutoImportResult = withContext(Dispatchers.IO) {
+        var imported = 0
+        var aiTagged = 0
+        var lastAiError: String? = null
+        val total = uris.size
+
+        uris.forEachIndexed { idx, uri ->
+            val label = uri.lastPathSegment?.substringAfterLast("/")?.substringBeforeLast(".")
+                ?.takeIf { it.isNotBlank() } ?: "Photo ${idx + 1}"
+            onProgress(idx + 1, total, "Adding & AI-tagging $label…")
+            try {
+                val copiedPath = storageManager.copyPickedUriToPrivateStorage(uri)
+                val destFile = File(copiedPath)
+                if (!destFile.exists() || destFile.length() == 0L) return@forEachIndexed
+
+                val now = System.currentTimeMillis()
+                val baseEntry = VaultEntryEntity(
+                    cloudId = "seam_${UUID.randomUUID().toString().replace("-", "_")}",
+                    userId = userId,
+                    itemType = VaultItemType.GALLERY.name,
+                    title = label,
+                    primaryContent = "",
+                    secretValue = "picker:${uri.toString().hashCode()}",
+                    folderOrAlbum = "Visual Archive",
+                    mediaPath = copiedPath,
+                    ocrExtractedText = localAiAnalyzer.extractLocalMediaMetadataAndOcr(copiedPath, label),
+                    category = "Moments",
+                    moodTag = "Luminous",
+                    createdAtMillis = now,
+                    updatedAtMillis = now
+                )
+                val localAnalysis = localAiAnalyzer.analyzeLocally(baseEntry)
+                var finalEntry = baseEntry.copy(
+                    category = localAnalysis.category,
+                    moodTag = localAnalysis.moodTag,
+                    aiSummary = localAnalysis.aiSummary,
+                    aiKeywords = localAnalysis.aiKeywords,
+                    isAnalyzed = true
+                )
+
+                if (runGeminiVision) {
+                    val cloudRes = aiService.analyzeEntry(finalEntry)
+                    if (cloudRes.isSuccess) {
+                        val ai = cloudRes.getOrThrow()
+                        finalEntry = finalEntry.copy(
+                            category = ai.category.ifBlank { finalEntry.category },
+                            moodTag = ai.moodTag.ifBlank { finalEntry.moodTag },
+                            aiSummary = ai.aiSummary.ifBlank { finalEntry.aiSummary },
+                            aiKeywords = mergeKeywords(ai.aiKeywords, localAnalysis.aiKeywords)
+                        )
+                        aiTagged++
+                    } else {
+                        lastAiError = cloudRes.exceptionOrNull()?.localizedMessage
+                    }
+                } else {
+                    aiTagged++
+                }
+
+                vaultDao.insertEntry(finalEntry)
+                imported++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Continue batch gracefully
+            }
+        }
+
+        if (imported > 0) {
+            writeLocalAutoSnapshot(userId)
+        }
+
+        AutoImportResult(
+            newlyImportedCount = imported,
+            aiTaggedCount = aiTagged,
+            skippedDuplicateCount = 0,
+            aiErrorMessage = lastAiError
+        )
+    }
+
+    suspend fun batchAiTagMemories(
+        userId: String,
+        useGeminiVision: Boolean,
+        onProgress: (processed: Int, total: Int, label: String) -> Unit = { _, _, _ -> }
+    ): AutoImportResult = withContext(Dispatchers.IO) {
+        val galleryItems = vaultDao.getEntriesOnce()
+            .filter { it.itemType == VaultItemType.GALLERY.name }
+        if (galleryItems.isEmpty()) {
+            return@withContext AutoImportResult(0, 0, 0)
+        }
+
+        var tagged = 0
+        var lastAiError: String? = null
+        val total = galleryItems.size
+
+        galleryItems.forEachIndexed { idx, item ->
+            onProgress(idx + 1, total, "AI indexing '${item.title.take(18)}'…")
+            val localAnalysis = localAiAnalyzer.analyzeLocally(item)
+            var updated = item.copy(
+                category = localAnalysis.category.ifBlank { item.category },
+                moodTag = localAnalysis.moodTag.ifBlank { item.moodTag },
+                aiSummary = item.aiSummary.ifBlank { localAnalysis.aiSummary },
+                aiKeywords = mergeKeywords(item.aiKeywords, localAnalysis.aiKeywords),
+                isAnalyzed = true,
+                updatedAtMillis = System.currentTimeMillis()
+            )
+
+            if (useGeminiVision) {
+                val cloudRes = aiService.analyzeEntry(updated)
+                if (cloudRes.isSuccess) {
+                    val ai = cloudRes.getOrThrow()
+                    updated = updated.copy(
+                        category = ai.category.ifBlank { updated.category },
+                        moodTag = ai.moodTag.ifBlank { updated.moodTag },
+                        aiSummary = ai.aiSummary.ifBlank { updated.aiSummary },
+                        aiKeywords = mergeKeywords(ai.aiKeywords, localAnalysis.aiKeywords)
+                    )
+                } else {
+                    lastAiError = cloudRes.exceptionOrNull()?.localizedMessage
+                }
+            }
+            vaultDao.updateEntry(updated)
+            tagged++
+        }
+
+        writeLocalAutoSnapshot(userId)
+        AutoImportResult(
+            newlyImportedCount = 0,
+            aiTaggedCount = tagged,
+            skippedDuplicateCount = 0,
+            aiErrorMessage = lastAiError
+        )
+    }
+
+    private fun cleanPhotoTitle(rawName: String, fallbackId: Long): String {
+        val base = rawName.substringBeforeLast(".").replace("_", " ").trim()
+        return if (base.isNotBlank()) base else "Memory $fallbackId"
+    }
+
+    private fun mergeKeywords(primary: String, secondary: String): String {
+        val merged = linkedSetOf<String>()
+        listOf(primary, secondary).forEach { source ->
+            source.split(",")
+                .map { it.trim().lowercase() }
+                .filter { it.length >= 2 }
+                .forEach { merged.add(it) }
+        }
+        return merged.take(28).joinToString(", ")
     }
 
     suspend fun runSemanticSearch(

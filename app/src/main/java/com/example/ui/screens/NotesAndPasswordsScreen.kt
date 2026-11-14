@@ -89,13 +89,18 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.local.PasswordStrengthTier
 import com.example.data.local.VaultCredentialEntity
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
-import com.example.ui.components.AmbientLightBackdrop
 import com.example.ui.components.InlineSaveStatusBadge
+import com.example.ui.components.SeamGlassBackdrop
+import com.example.ui.components.SeamGlassBadge
+import com.example.ui.components.SeamGlassPillButton
+import com.example.ui.components.SeamGlassSearchField
 import com.example.ui.components.SeamTopHeader
-import com.example.ui.components.seamPressableCard
+import com.example.ui.components.seamGlassSurface
+import com.example.ui.components.seamPressableGlassCard
 import com.example.ui.security.PinOnlyVerificationDialog
 import com.example.ui.security.triggerHardwareBiometricPrompt
 import com.example.ui.theme.SeamBorderSubtle
@@ -254,11 +259,9 @@ fun ReflectionsNotesScreen(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
+        modifier = Modifier.fillMaxSize()
     ) {
-        AmbientLightBackdrop(reducedMotion = reducedMotion)
+        SeamGlassBackdrop(reducedMotion = reducedMotion)
 
         LazyColumn(
             modifier = Modifier
@@ -319,23 +322,12 @@ fun ReflectionsNotesScreen(
 
             // 3. Search Bar ("Find a note or idea")
             item {
-                OutlinedTextField(
+                SeamGlassSearchField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            text = "Find a note or idea",
-                            color = SeamMutedGrey
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = "Search notes",
-                            tint = SeamMutedGrey
-                        )
-                    },
-                    trailingIcon = {
+                    placeholder = "Find a note or idea",
+                    leadingIcon = Icons.Outlined.Search,
+                    trailingContent = {
                         IconButton(
                             onClick = { showSortAndFilterControls = !showSortAndFilterControls },
                             modifier = Modifier.minimumInteractiveComponentSize()
@@ -347,8 +339,6 @@ fun ReflectionsNotesScreen(
                             )
                         }
                     },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("notes_search_input")
@@ -402,9 +392,7 @@ fun ReflectionsNotesScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(SeamElevatedSurface)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(16.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(16.dp), elevated = true)
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -441,12 +429,13 @@ fun ReflectionsNotesScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .seamPressableCard(
+                            .seamPressableGlassCard(
                                 reducedMotion = reducedMotion,
                                 shape = RoundedCornerShape(22.dp),
+                                elevated = true,
+                                accentBorder = SeamLavenderAccent,
                                 onClick = { editingNote = pinnedNote }
                             )
-                            .background(SeamCharcoal)
                             .padding(horizontal = 20.dp, vertical = 18.dp)
                             .testTag("pinned_note_card"),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -495,9 +484,7 @@ fun ReflectionsNotesScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(22.dp))
                             .padding(24.dp)
                             .testTag("notes_empty_state_card"),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -526,9 +513,11 @@ fun ReflectionsNotesScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .seamPressableCard(
+                        .seamPressableGlassCard(
                             reducedMotion = reducedMotion,
                             shape = RoundedCornerShape(22.dp),
+                            elevated = isSelected,
+                            accentBorder = if (isSelected) SeamLavenderAccent else null,
                             onClick = {
                                 if (isMultiSelectMode) {
                                     if (isSelected) selectedNoteIds.remove(note.id)
@@ -538,7 +527,6 @@ fun ReflectionsNotesScreen(
                                 }
                             }
                         )
-                        .background(if (isSelected) SeamElevatedSurface else SeamCharcoal)
                         .padding(
                             horizontal = 18.dp,
                             vertical = if (isCompactView) 12.dp else 16.dp
@@ -550,9 +538,7 @@ fun ReflectionsNotesScreen(
                     Box(
                         modifier = Modifier
                             .size(44.dp)
-                            .clip(CircleShape)
-                            .background(SeamElevatedSurface)
-                            .border(1.dp, SeamBorderSubtle, CircleShape),
+                            .seamGlassSurface(shape = CircleShape, elevated = true),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -707,14 +693,16 @@ private fun DistractionLightNoteEditor(
         "TODAY · ${timeFormat.format(Date(initialNote?.updatedAtMillis ?: System.currentTimeMillis())).uppercase(Locale.getDefault())}"
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
-            .padding(horizontal = 22.dp, vertical = 12.dp)
-            .testTag("distraction_light_note_editor"),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        SeamGlassBackdrop(reducedMotion = reducedMotion)
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 22.dp, vertical = 12.dp)
+                .testTag("distraction_light_note_editor"),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
         // Top Header with Back, Autosave badge ("Saving…" / "Saved"), and "Save" action
         SeamTopHeader(
             statusLabel = saveStatusText,
@@ -923,9 +911,7 @@ private fun DistractionLightNoteEditor(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 10.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(SeamElevatedSurface)
-                    .border(1.dp, SeamBorderSubtle, RoundedCornerShape(18.dp))
+                    .seamGlassSurface(shape = RoundedCornerShape(18.dp), elevated = true)
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -965,9 +951,7 @@ private fun DistractionLightNoteEditor(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(22.dp))
-                .background(SeamCharcoal)
-                .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
+                .seamGlassSurface(shape = RoundedCornerShape(22.dp), elevated = true)
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -1025,6 +1009,7 @@ private fun DistractionLightNoteEditor(
                 color = SeamMutedGrey,
                 modifier = Modifier.clickable { showMetadataSheet = !showMetadataSheet }
             )
+        }
         }
     }
 }
@@ -1129,11 +1114,9 @@ fun PasswordsVaultScreen(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
+        modifier = Modifier.fillMaxSize()
     ) {
-        AmbientLightBackdrop(reducedMotion = reducedMotion)
+        SeamGlassBackdrop(reducedMotion = reducedMotion)
 
         LazyColumn(
             modifier = Modifier
@@ -1184,22 +1167,41 @@ fun PasswordsVaultScreen(
                 }
             }
 
-            // 3. VAULT HEALTH Card (matching Page 9 left screenshot)
+            // 3. VAULT HEALTH Glass Card (Room AES-256-GCM · Passwords masked by default)
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(SeamCharcoal)
-                        .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
+                        .seamGlassSurface(
+                            shape = RoundedCornerShape(22.dp),
+                            elevated = true,
+                            accentBorder = if (reusedCount == 0) null else SeamWarningAmber
+                        )
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = "VAULT HEALTH",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SeamMutedGrey
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "VAULT HEALTH",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SeamMutedGrey
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            SeamGlassBadge(
+                                text = "Room AES-256-GCM",
+                                tint = SeamLavenderAccent,
+                                borderTint = SeamLavenderAccent.copy(alpha = 0.4f)
+                            )
+                            SeamGlassBadge(
+                                text = "Masked by default",
+                                tint = SeamSilver
+                            )
+                        }
+                    }
                     Text(
                         text = if (reusedCount == 0) "All clear" else "$reusedCount reused password warning",
                         style = MaterialTheme.typography.headlineMedium,
@@ -1208,7 +1210,7 @@ fun PasswordsVaultScreen(
                     LinearProgressIndicator(
                         progress = { healthRatio },
                         color = if (reusedCount == 0) SeamWarmIvory else SeamWarningAmber,
-                        trackColor = SeamElevatedSurface,
+                        trackColor = Color(0x40FFFFFF),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(7.dp)
@@ -1216,7 +1218,7 @@ fun PasswordsVaultScreen(
                     )
                     Text(
                         text = if (reusedCount == 0) {
-                            "Computed locally via salted SHA-256 fingerprints · Zero duplicate secrets across ${credentials.size} logins."
+                            "Encrypted inside Room (`seam_isolated_vault.db`) · Passwords stay masked unless verified."
                         } else {
                             "Computed locally · $reusedCount credentials share the same password fingerprint."
                         },
@@ -1243,24 +1245,11 @@ fun PasswordsVaultScreen(
             // 4. Safe Metadata Search & Category Filters
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
+                    SeamGlassSearchField(
                         value = safeSearchQuery,
                         onValueChange = { safeSearchQuery = it },
-                        placeholder = {
-                            Text(
-                                text = "Search service name or username hint",
-                                color = SeamMutedGrey
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Outlined.Search,
-                                contentDescription = "Search safe vault metadata",
-                                tint = SeamMutedGrey
-                            )
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(18.dp),
+                        placeholder = "Search service name or username hint",
+                        leadingIcon = Icons.Outlined.Search,
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("vault_safe_search_input")
@@ -1297,9 +1286,7 @@ fun PasswordsVaultScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(22.dp))
                             .padding(24.dp)
                             .testTag("vault_empty_state_card"),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1325,16 +1312,21 @@ fun PasswordsVaultScreen(
 
             items(visibleCredentials, key = { it.id }) { item ->
                 val monogram = item.serviceTitle.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "•"
+                val tier = item.strengthTier()
+                val tierColor = when (tier) {
+                    PasswordStrengthTier.STRONG -> SeamSuccessSage
+                    PasswordStrengthTier.FAIR -> SeamWarningAmber
+                    PasswordStrengthTier.WEAK -> SeamErrorCoral
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .seamPressableCard(
+                        .seamPressableGlassCard(
                             reducedMotion = reducedMotion,
                             shape = RoundedCornerShape(22.dp),
                             onClick = { selectedDetailCredentialId = item.id }
                         )
-                        .background(SeamCharcoal)
-                        .padding(horizontal = 18.dp, vertical = 18.dp)
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
                         .testTag("password_card_${item.id}"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -1342,9 +1334,11 @@ fun PasswordsVaultScreen(
                     Box(
                         modifier = Modifier
                             .size(44.dp)
-                            .clip(CircleShape)
-                            .background(SeamElevatedSurface)
-                            .border(1.dp, SeamBorderSubtle, CircleShape),
+                            .seamGlassSurface(
+                                shape = CircleShape,
+                                elevated = true,
+                                accentBorder = SeamLavenderAccent.copy(alpha = 0.45f)
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -1357,12 +1351,14 @@ fun PasswordsVaultScreen(
 
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Text(
                             text = item.serviceTitle,
                             style = MaterialTheme.typography.titleLarge,
-                            color = SeamWarmIvory
+                            color = SeamWarmIvory,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = item.accountUsername.ifBlank { item.domainOrUrl.ifBlank { "Protected login" } },
@@ -1371,6 +1367,25 @@ fun PasswordsVaultScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            SeamGlassBadge(
+                                text = item.maskedPasswordOrDefault(),
+                                tint = SeamWarmIvory.copy(alpha = 0.85f)
+                            )
+                            SeamGlassBadge(
+                                text = item.encryptionAlgorithm,
+                                tint = SeamLavenderAccent,
+                                borderTint = SeamLavenderAccent.copy(alpha = 0.35f)
+                            )
+                            SeamGlassBadge(
+                                text = tier.label,
+                                tint = tierColor,
+                                borderTint = tierColor.copy(alpha = 0.4f)
+                            )
+                        }
                     }
 
                     Icon(
@@ -1386,9 +1401,7 @@ fun PasswordsVaultScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(SeamCharcoal)
-                        .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
+                        .seamGlassSurface(shape = RoundedCornerShape(22.dp))
                         .padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -1497,281 +1510,279 @@ private fun CredentialDetailView(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-            .testTag("credential_detail_view"),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        SeamGlassBackdrop(reducedMotion = reducedMotion)
+
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .testTag("credential_detail_view"),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            SeamTopHeader(
-                statusLabel = if (isRevealed) "Revealed (${remainingRevealSeconds}s)" else "Encrypted",
-                reducedMotion = reducedMotion,
-                showBackButton = true,
-                onBackClick = onBack,
-                rightActionContent = {
-                    Row {
-                        IconButton(
-                            onClick = onEditCredential,
-                            modifier = Modifier.minimumInteractiveComponentSize()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Edit,
-                                contentDescription = "Edit credential",
-                                tint = SeamSilver
-                            )
-                        }
-                        IconButton(
-                            onClick = { showDeleteConfirm = true },
-                            modifier = Modifier.minimumInteractiveComponentSize()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.DeleteOutline,
-                                contentDescription = "Delete credential",
-                                tint = SeamErrorCoral
-                            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                SeamTopHeader(
+                    statusLabel = if (isRevealed) "Revealed (${remainingRevealSeconds}s)" else "Encrypted",
+                    reducedMotion = reducedMotion,
+                    showBackButton = true,
+                    onBackClick = onBack,
+                    rightActionContent = {
+                        Row {
+                            IconButton(
+                                onClick = onEditCredential,
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Edit,
+                                    contentDescription = "Edit credential",
+                                    tint = SeamSilver
+                                )
+                            }
+                            IconButton(
+                                onClick = { showDeleteConfirm = true },
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteOutline,
+                                    contentDescription = "Delete credential",
+                                    tint = SeamErrorCoral
+                                )
+                            }
                         }
                     }
-                }
-            )
-
-            Text(
-                text = credential.serviceTitle,
-                style = MaterialTheme.typography.displayLarge,
-                color = SeamWarmIvory
-            )
-
-            Text(
-                text = "LOGIN DETAILS",
-                style = MaterialTheme.typography.labelSmall,
-                color = SeamMutedGrey
-            )
-
-            // 1. Username Card
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(SeamCharcoal)
-                    .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(SeamElevatedSurface)
-                        .border(1.dp, SeamBorderSubtle, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.AlternateEmail,
-                        contentDescription = null,
-                        tint = SeamSilver,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Username",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = SeamWarmIvory
-                    )
-                    Text(
-                        text = credential.accountUsername.ifBlank { "Not specified" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SeamMutedGrey
-                    )
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = SeamMutedGrey
                 )
-            }
 
-            // 2. Password Card
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .seamPressableCard(
-                        reducedMotion = reducedMotion,
-                        shape = RoundedCornerShape(22.dp),
-                        onClick = onAuthenticateAndReveal
+                Text(
+                    text = credential.serviceTitle,
+                    style = MaterialTheme.typography.displayLarge,
+                    color = SeamWarmIvory
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SeamGlassBadge(
+                        text = credential.encryptionAlgorithm,
+                        tint = SeamLavenderAccent,
+                        borderTint = SeamLavenderAccent.copy(alpha = 0.4f)
                     )
-                    .background(SeamCharcoal)
-                    .padding(horizontal = 18.dp, vertical = 18.dp)
-                    .testTag("reveal_password_button_${credential.id}"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
+                    SeamGlassBadge(
+                        text = if (isRevealed) "Revealed · Auto-hides in ${remainingRevealSeconds}s" else "Masked by default",
+                        tint = if (isRevealed) SeamSuccessSage else SeamSilver
+                    )
+                }
+
+                Text(
+                    text = "LOGIN DETAILS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SeamMutedGrey
+                )
+
+                // 1. Username Card
+                Row(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(SeamElevatedSurface)
-                        .border(1.dp, SeamBorderSubtle, CircleShape),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .seamGlassSurface(shape = RoundedCornerShape(22.dp))
+                        .padding(horizontal = 18.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(12.dp)
-                            .clip(CircleShape)
-                            .background(if (isRevealed) SeamSuccessSage else SeamWarmIvory)
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .size(44.dp)
+                            .seamGlassSurface(shape = CircleShape, elevated = true),
+                        contentAlignment = Alignment.Center
                     ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AlternateEmail,
+                            contentDescription = null,
+                            tint = SeamSilver,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Password",
+                            text = "Username",
                             style = MaterialTheme.typography.titleMedium,
                             color = SeamWarmIvory
                         )
-                        if (isRevealed && remainingRevealSeconds != null) {
-                            Text(
-                                text = "· Auto-hides in ${remainingRevealSeconds}s",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SeamLavenderAccent
-                            )
-                        }
-                    }
-                    Text(
-                        text = displayedPassword,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = if (isRevealed) FontFamily.Monospace else FontFamily.Default
-                        ),
-                        color = if (isRevealed) SeamWarmIvory else SeamMutedGrey
-                    )
-                }
-                if (isVaultSessionUnlocked) {
-                    IconButton(
-                        onClick = {
-                            onCopySecretWithAutoClear(credential.serviceTitle, credential.encryptedPassword)
-                        },
-                        modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("copy_password_button_${credential.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.ContentCopy,
-                            contentDescription = "Copy password (auto-clears in 30s)",
-                            tint = SeamSilver
+                        Text(
+                            text = credential.accountUsername.ifBlank { "Not specified" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = SeamMutedGrey
                         )
                     }
-                } else {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
                         tint = SeamMutedGrey
                     )
                 }
-            }
 
-            // 3. Website Card
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(SeamCharcoal)
-                    .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
+                // 2. Password Card (Masked by default)
+                Row(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(SeamElevatedSurface)
-                        .border(1.dp, SeamBorderSubtle, CircleShape),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .seamPressableGlassCard(
+                            reducedMotion = reducedMotion,
+                            shape = RoundedCornerShape(22.dp),
+                            elevated = true,
+                            accentBorder = if (isRevealed) SeamSuccessSage else SeamLavenderAccent.copy(alpha = 0.6f),
+                            onClick = onAuthenticateAndReveal
+                        )
+                        .padding(horizontal = 18.dp, vertical = 18.dp)
+                        .testTag("reveal_password_button_${credential.id}"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .seamGlassSurface(shape = CircleShape, elevated = true),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = if (isRevealed) "Hide password" else "Reveal password",
+                            tint = if (isRevealed) SeamSuccessSage else SeamWarmIvory,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Password",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = SeamWarmIvory
+                            )
+                            if (isRevealed && remainingRevealSeconds != null) {
+                                Text(
+                                    text = "· Auto-hides in ${remainingRevealSeconds}s",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SeamLavenderAccent
+                                )
+                            }
+                        }
+                        Text(
+                            text = if (isRevealed) displayedPassword else credential.maskedPasswordOrDefault(),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = if (isRevealed) SeamWarmIvory else SeamSilver
+                        )
+                    }
+                    if (isVaultSessionUnlocked) {
+                        IconButton(
+                            onClick = {
+                                onCopySecretWithAutoClear(credential.serviceTitle, credential.encryptedPassword)
+                            },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("copy_password_button_${credential.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = "Copy password (auto-clears in 30s)",
+                                tint = SeamSilver
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = SeamMutedGrey
+                        )
+                    }
+                }
+
+                // 3. Website Card
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .seamGlassSurface(shape = RoundedCornerShape(22.dp))
+                        .padding(horizontal = 18.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .seamGlassSurface(shape = CircleShape, elevated = true),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.NorthEast,
+                            contentDescription = null,
+                            tint = SeamSilver,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Website",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = SeamWarmIvory
+                        )
+                        Text(
+                            text = credential.domainOrUrl.ifBlank { "Offline credential" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = SeamMutedGrey
+                        )
+                    }
                     Icon(
-                        imageVector = Icons.Outlined.NorthEast,
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
-                        tint = SeamSilver,
-                        modifier = Modifier.size(18.dp)
+                        tint = SeamMutedGrey
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
+
+                // 4. Security Reminder Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .seamGlassSurface(
+                            shape = RoundedCornerShape(22.dp),
+                            accentBorder = if (isPasswordReused) SeamWarningAmber else null
+                        )
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
-                        text = "Website",
+                        text = if (isPasswordReused) "Security warning · Reused password" else "Security reminder",
                         style = MaterialTheme.typography.titleMedium,
-                        color = SeamWarmIvory
+                        color = if (isPasswordReused) SeamWarningAmber else SeamWarmIvory
                     )
                     Text(
-                        text = credential.domainOrUrl.ifBlank { "Offline credential" },
+                        text = if (decryptedNotes.isNotBlank()) {
+                            "Note: $decryptedNotes"
+                        } else if (isPasswordReused) {
+                            "This password matches another login in your local vault. Tap Edit to generate a unique key."
+                        } else {
+                            "Never share your master credentials. Encrypted with Android Keystore AES-256-GCM."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = SeamMutedGrey
                     )
                 }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = SeamMutedGrey
-                )
             }
 
-            // 4. Security Reminder Card (matching Page 9 right screenshot)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(SeamCharcoal)
-                    .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = if (isPasswordReused) "Security warning · Reused password" else "Security reminder",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isPasswordReused) SeamWarningAmber else SeamWarmIvory
-                )
-                Text(
-                    text = if (decryptedNotes.isNotBlank()) {
-                        "Note: $decryptedNotes"
-                    } else if (isPasswordReused) {
-                        "This password matches another login in your local vault. Tap Edit to generate a unique key."
-                    } else {
-                        "Never share your master credentials. Encrypted with Android Keystore AES-256-GCM."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SeamMutedGrey
-                )
-            }
-        }
-
-        // Bottom Pill Action Button ("Authenticate to reveal" matching Page 9 Right Screenshot)
-        Button(
-            onClick = onAuthenticateAndReveal,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = SeamWarmIvory,
-                contentColor = SeamNearBlack
-            ),
-            shape = RoundedCornerShape(28.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .testTag("authenticate_to_reveal_button")
-        ) {
-            Text(
+            // Bottom Frosted Glass Pill Action Button ("Authenticate to reveal")
+            SeamGlassPillButton(
                 text = when {
                     !isVaultSessionUnlocked -> "Authenticate to reveal"
                     isRevealed -> "Hide password"
                     else -> "Reveal password (15s timeout)"
                 },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                leadingIcon = if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Lock,
+                onClick = onAuthenticateAndReveal,
+                reducedMotion = reducedMotion,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("authenticate_to_reveal_button")
             )
         }
     }
@@ -1862,9 +1873,11 @@ private fun SeamGoogleAutofillOverlayCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(SeamCharcoal)
-            .border(1.dp, SeamLavenderAccent.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
+            .seamGlassSurface(
+                shape = RoundedCornerShape(22.dp),
+                elevated = true,
+                accentBorder = SeamLavenderAccent
+            )
             .padding(20.dp)
             .testTag("google_autofill_overlay_card"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1925,9 +1938,7 @@ private fun SeamGoogleAutofillOverlayCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(SeamElevatedSurface)
-                .border(1.dp, SeamBorderSubtle, RoundedCornerShape(16.dp))
+                .seamGlassSurface(shape = RoundedCornerShape(16.dp))
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -2096,9 +2107,11 @@ private fun SeamGoogleAutofillOverlayCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(SeamNearBlack)
-                    .border(1.dp, SeamSuccessSage.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                    .seamGlassSurface(
+                        shape = RoundedCornerShape(16.dp),
+                        elevated = true,
+                        accentBorder = SeamSuccessSage
+                    )
                     .padding(14.dp)
                     .testTag("google_save_password_overlay_prompt"),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

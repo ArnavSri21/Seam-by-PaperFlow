@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,16 +19,21 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,12 +46,9 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -57,10 +60,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,7 +90,11 @@ import com.example.data.repository.PaperFlowRepository
 import com.example.ui.auth.AuthScreen
 import com.example.ui.auth.onGoogleSignInClicked
 import com.example.ui.auth.signOutFromPaperFlow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import com.example.ui.components.SeamGlassBackdrop
 import com.example.ui.components.rememberEffectiveReducedMotion
+import com.example.ui.components.seamGlassSurface
 import com.example.ui.screens.GalleryVaultScreen
 import com.example.ui.screens.PasswordsVaultScreen
 import com.example.ui.screens.ReflectionsNotesScreen
@@ -148,11 +159,9 @@ fun PaperFlowAppRoot() {
 
     val prefs = loadedPrefs
     if (prefs == null && currentUser == null) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SeamNearBlack)
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            SeamGlassBackdrop(reducedMotion = false)
+        }
         return
     }
 
@@ -249,6 +258,7 @@ fun AuthenticatedSanctuaryHost(
     val filteredEntries by viewModel.filteredEntries.collectAsStateWithLifecycle()
     val searchFilter by viewModel.searchFilter.collectAsStateWithLifecycle()
     val backgroundStatus by viewModel.backgroundStatus.collectAsStateWithLifecycle()
+    val gallerySyncState by viewModel.gallerySyncState.collectAsStateWithLifecycle()
     val revealedPasswordCountdowns by viewModel.revealedPasswordCountdowns.collectAsStateWithLifecycle()
     val clipboardClearCountdown by viewModel.clipboardClearCountdown.collectAsStateWithLifecycle()
     val bannerMessage by viewModel.uiBannerMessage.collectAsStateWithLifecycle()
@@ -364,13 +374,26 @@ fun AuthenticatedSanctuaryHost(
 
         Scaffold(
             contentWindowInsets = WindowInsets.safeDrawing,
+            containerColor = Color(0xFF07070B),
             floatingActionButton = {
                 if (currentTab != PaperFlowTab.SETTINGS) {
                     FloatingActionButton(
                         onClick = { showQuickCreateSheet = true },
-                        containerColor = SeamWarmIvory,
-                        contentColor = SeamNearBlack,
-                        modifier = Modifier.testTag("main_fab_add")
+                        containerColor = Color(0xE82A293B),
+                        contentColor = SeamWarmIvory,
+                        shape = RoundedCornerShape(22.dp),
+                        modifier = Modifier
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.48f),
+                                        SeamLavenderAccent.copy(alpha = 0.30f)
+                                    )
+                                ),
+                                shape = RoundedCornerShape(22.dp)
+                            )
+                            .testTag("main_fab_add")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
@@ -380,70 +403,23 @@ fun AuthenticatedSanctuaryHost(
                 }
             },
             bottomBar = {
-                // 5-Tab Bottom Navigation Bar matching Pages 3, 5, 7, 9, 11, 13:
-                // Home | Memories | Notes | Vault | Search
-                NavigationBar(
-                    containerColor = SeamCharcoal,
-                    modifier = Modifier.border(width = 1.dp, color = SeamBorderSubtle)
-                ) {
-                    val itemColors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = SeamWarmIvory,
-                        selectedTextColor = SeamWarmIvory,
-                        indicatorColor = SeamElevatedSurface,
-                        unselectedIconColor = SeamMutedGrey,
-                        unselectedTextColor = SeamMutedGrey
-                    )
-
-                    NavigationBarItem(
-                        selected = currentTab == PaperFlowTab.SANCTUARY,
-                        onClick = { viewModel.selectTab(PaperFlowTab.SANCTUARY) },
-                        icon = { Icon(Icons.Outlined.Home, contentDescription = "Home") },
-                        label = { Text("Home") },
-                        colors = itemColors,
-                        modifier = Modifier.testTag("nav_sanctuary")
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == PaperFlowTab.GALLERY,
-                        onClick = { viewModel.selectTab(PaperFlowTab.GALLERY) },
-                        icon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = "Memories") },
-                        label = { Text("Memories") },
-                        colors = itemColors,
-                        modifier = Modifier.testTag("nav_gallery")
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == PaperFlowTab.NOTES,
-                        onClick = { viewModel.selectTab(PaperFlowTab.NOTES) },
-                        icon = { Icon(Icons.Outlined.Edit, contentDescription = "Notes") },
-                        label = { Text("Notes") },
-                        colors = itemColors,
-                        modifier = Modifier.testTag("nav_notes")
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == PaperFlowTab.PASSWORDS,
-                        onClick = { viewModel.selectTab(PaperFlowTab.PASSWORDS) },
-                        icon = { Icon(Icons.Outlined.Lock, contentDescription = "Vault") },
-                        label = { Text("Vault") },
-                        colors = itemColors,
-                        modifier = Modifier.testTag("nav_passwords")
-                    )
-                    NavigationBarItem(
-                        selected = currentTab == PaperFlowTab.SEARCH,
-                        onClick = { viewModel.selectTab(PaperFlowTab.SEARCH) },
-                        icon = { Icon(Icons.Outlined.Search, contentDescription = "Search") },
-                        label = { Text("Search") },
-                        colors = itemColors,
-                        modifier = Modifier.testTag("nav_search")
-                    )
-                }
+                // Pill-shaped Frosted Glass UI Taskbar: Home | Memories | Notes | Vault | Search
+                SeamFloatingPillTaskbar(
+                    currentTab = currentTab,
+                    onSelectTab = { viewModel.selectTab(it) }
+                )
             }
         ) { innerPadding ->
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                color = MaterialTheme.colorScheme.background
+            Box(
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                SeamGlassBackdrop(reducedMotion = effectiveReducedMotion)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
                     // Section 09 · Success confirmation / Undo banner (180–260 ms transition)
                     AnimatedVisibility(
                         visible = bannerMessage != null,
@@ -455,9 +431,10 @@ fun AuthenticatedSanctuaryHost(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 20.dp, vertical = 6.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(SeamElevatedSurface)
-                                    .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
+                                    .seamGlassSurface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        elevated = true
+                                    )
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -543,7 +520,23 @@ fun AuthenticatedSanctuaryHost(
                                 PaperFlowTab.GALLERY -> {
                                     GalleryVaultScreen(
                                         galleryEntries = allEntries.filter { it.itemType == VaultItemType.GALLERY.name },
-                                        reducedMotion = preferences.reducedMotionEnabled,
+                                        preferences = preferences,
+                                        gallerySyncState = gallerySyncState,
+                                        onAutoSyncDeviceGallery = { enableGemini ->
+                                            viewModel.syncDeviceGalleryPhotos(context, enableGemini)
+                                        },
+                                        onImportMultiplePickedPhotos = { uris, useGemini ->
+                                            viewModel.importMultiplePickedPhotosWithAi(uris, useGemini)
+                                        },
+                                        onRunAiTagAllMemories = { useGemini ->
+                                            viewModel.runAiKeywordTaggingOnAllMemories(useGemini)
+                                        },
+                                        onMarkGalleryPermissionPrompted = {
+                                            viewModel.markGalleryPermissionPrompted()
+                                        },
+                                        onOpenGlobalSearchWithToken = { token ->
+                                            viewModel.openSearchWithToken(token)
+                                        },
                                         onPhotoPickedForVault = { uri ->
                                             viewModel.importGalleryPhotoToPhoneStorage(uri) { copiedPath ->
                                                 sanctuaryEditorState = VaultItemType.GALLERY to VaultEntryEntity(
@@ -816,6 +809,133 @@ fun AuthenticatedSanctuaryHost(
                     credentialEditorState = false to null
                 }
             )
+        }
+    }
+}
+
+private data class PillNavItem(
+    val tab: PaperFlowTab,
+    val label: String,
+    val icon: ImageVector,
+    val testTag: String
+)
+
+/**
+ * Floating Pill-Shaped Frosted Glass UI Taskbar.
+ * Enforces safe navigation-bar insets and >= 48dp accessible touch targets.
+ */
+@Composable
+private fun SeamFloatingPillTaskbar(
+    currentTab: PaperFlowTab,
+    onSelectTab: (PaperFlowTab) -> Unit
+) {
+    val navItems = remember {
+        listOf(
+            PillNavItem(PaperFlowTab.SANCTUARY, "Home", Icons.Outlined.Home, "nav_sanctuary"),
+            PillNavItem(PaperFlowTab.GALLERY, "Memories", Icons.Outlined.PhotoLibrary, "nav_gallery"),
+            PillNavItem(PaperFlowTab.NOTES, "Notes", Icons.Outlined.Edit, "nav_notes"),
+            PillNavItem(PaperFlowTab.PASSWORDS, "Vault", Icons.Outlined.Lock, "nav_passwords"),
+            PillNavItem(PaperFlowTab.SEARCH, "Search", Icons.Outlined.Search, "nav_search")
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .seamGlassSurface(
+                    shape = RoundedCornerShape(34.dp),
+                    elevated = true,
+                    accentBorder = SeamLavenderAccent.copy(alpha = 0.48f)
+                )
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            navItems.forEach { item ->
+                val selected = currentTab == item.tab
+                val tintColor by animateColorAsState(
+                    targetValue = if (selected) SeamWarmIvory else SeamMutedGrey,
+                    animationSpec = tween(durationMillis = 180),
+                    label = "pill_tab_tint"
+                )
+                val pillShape = RoundedCornerShape(28.dp)
+                val interactionSource = remember { MutableInteractionSource() }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .minimumInteractiveComponentSize()
+                        .clip(pillShape)
+                        .background(
+                            if (selected) {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0x569C98B8),
+                                        Color(0x36595276)
+                                    )
+                                )
+                            } else {
+                                Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+                            }
+                        )
+                        .then(
+                            if (selected) {
+                                Modifier.border(
+                                    width = 1.dp,
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.42f),
+                                            SeamLavenderAccent.copy(alpha = 0.22f)
+                                        )
+                                    ),
+                                    shape = pillShape
+                                )
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = androidx.compose.material3.ripple(color = SeamWarmIvory),
+                            role = Role.Tab,
+                            onClick = { onSelectTab(item.tab) }
+                        )
+                        .testTag(item.testTag),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.label,
+                            tint = tintColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = item.label,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                            ),
+                            color = tintColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
         }
     }
 }

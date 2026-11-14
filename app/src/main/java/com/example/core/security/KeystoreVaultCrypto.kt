@@ -26,12 +26,23 @@ import javax.crypto.spec.SecretKeySpec
  */
 class KeystoreVaultCrypto(private val context: Context) {
 
-    private companion object {
-        const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        const val KEY_ALIAS = "seam_paperflow_vault_master_key_v1"
-        const val TRANSFORMATION = "AES/GCM/NoPadding"
-        const val GCM_TAG_BITS = 128
-        const val GCM_IV_BYTES = 12
+    companion object {
+        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val KEY_ALIAS = "seam_paperflow_vault_master_key_v1"
+        private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val GCM_TAG_BITS = 128
+        private const val GCM_IV_BYTES = 12
+
+        fun scorePasswordEntropy(plainText: String): Int {
+            if (plainText.isBlank()) return 0
+            var score = 0
+            score += (plainText.length.coerceAtMost(20) * 3) // up to 60 pts
+            if (plainText.any { it.isLowerCase() }) score += 10
+            if (plainText.any { it.isUpperCase() }) score += 10
+            if (plainText.any { it.isDigit() }) score += 10
+            if (plainText.any { !it.isLetterOrDigit() }) score += 10
+            return score.coerceIn(0, 100)
+        }
     }
 
     private fun getOrCreateSecretKey(fallbackContextKey: String): SecretKey {
@@ -107,6 +118,12 @@ class KeystoreVaultCrypto(private val context: Context) {
             .digest("seam_reuse_salt::$plainText".toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }.take(24)
     }
+
+    /**
+     * Evaluates local password entropy tier (0..100) at save time so the UI can show
+     * Strong / Fair / Weak badges without keeping plaintext passwords in memory.
+     */
+    fun computePasswordStrengthScore(plainText: String): Int = scorePasswordEntropy(plainText)
 
     fun generateStrongPassword(
         length: Int = 20,

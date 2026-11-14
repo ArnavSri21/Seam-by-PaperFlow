@@ -44,12 +44,15 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -57,6 +60,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,24 +70,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.core.security.BiometricSecurityManager
+import com.example.core.security.KeystoreVaultCrypto
+import com.example.data.local.PasswordStrengthTier
 import com.example.data.local.VaultCredentialEntity
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
 import com.example.data.preferences.AiExecutionMode
 import com.example.data.preferences.ThemeModePreference
 import com.example.data.preferences.UserVaultPreferences
-import com.example.ui.components.AmbientLightBackdrop
 import com.example.ui.components.RawVideoAnimationBanner
+import com.example.ui.components.SeamGlassBackdrop
+import com.example.ui.components.SeamGlassBadge
 import com.example.ui.components.SeamTopHeader
-import com.example.ui.components.seamPressableCard
+import com.example.ui.components.seamGlassSurface
+import com.example.ui.components.seamPressableGlassCard
 import com.example.ui.security.PinOnlyVerificationDialog
 import com.example.ui.security.triggerHardwareBiometricPrompt
 import com.example.ui.theme.SeamBorderSubtle
@@ -95,6 +106,7 @@ import com.example.ui.theme.SeamMutedGrey
 import com.example.ui.theme.SeamNearBlack
 import com.example.ui.theme.SeamSilver
 import com.example.ui.theme.SeamSuccessSage
+import com.example.ui.theme.SeamWarningAmber
 import com.example.ui.theme.SeamWarmIvory
 import com.example.ui.viewmodel.BackgroundStatusState
 import java.text.SimpleDateFormat
@@ -326,11 +338,9 @@ fun SettingsAndSyncScreen(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
+        modifier = Modifier.fillMaxSize()
     ) {
-        AmbientLightBackdrop(reducedMotion = preferences.reducedMotionEnabled)
+        SeamGlassBackdrop(reducedMotion = preferences.reducedMotionEnabled)
 
         LazyColumn(
             modifier = Modifier
@@ -450,9 +460,7 @@ fun SettingsAndSyncScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(SeamElevatedSurface)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(16.dp), elevated = true)
                             .padding(14.dp)
                             .testTag("security_layer_status_panel"),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -563,9 +571,7 @@ fun SettingsAndSyncScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(SeamElevatedSurface)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(16.dp), elevated = true)
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -681,8 +687,7 @@ fun SettingsAndSyncScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(SeamElevatedSurface)
+                            .seamGlassSurface(shape = RoundedCornerShape(16.dp), elevated = true)
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -967,12 +972,12 @@ private fun SettingsGoalSectionCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .seamPressableCard(
+            .seamPressableGlassCard(
                 reducedMotion = reducedMotion,
                 shape = RoundedCornerShape(22.dp),
+                elevated = isExpanded,
                 onClick = onToggleExpand
             )
-            .background(SeamCharcoal)
             .padding(horizontal = 18.dp, vertical = 18.dp)
             .testTag(testTag),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -985,9 +990,7 @@ private fun SettingsGoalSectionCard(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .clip(CircleShape)
-                    .background(SeamElevatedSurface)
-                    .border(1.dp, SeamBorderSubtle, CircleShape),
+                    .seamGlassSurface(shape = CircleShape, elevated = true),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -1050,7 +1053,7 @@ fun SeamQuickCreateSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = SeamCharcoal,
+        containerColor = Color(0xF212131C),
         contentColor = SeamWarmIvory
     ) {
         Column(
@@ -1118,12 +1121,12 @@ private fun QuickCaptureRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .seamPressableCard(
+            .seamPressableGlassCard(
                 reducedMotion = reducedMotion,
                 shape = RoundedCornerShape(18.dp),
+                elevated = true,
                 onClick = onClick
             )
-            .background(SeamElevatedSurface)
             .padding(horizontal = 16.dp, vertical = 14.dp)
             .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically,
@@ -1132,9 +1135,7 @@ private fun QuickCaptureRow(
         Box(
             modifier = Modifier
                 .size(40.dp)
-                .clip(CircleShape)
-                .background(SeamCharcoal)
-                .border(1.dp, SeamBorderSubtle, CircleShape),
+                .seamGlassSurface(shape = CircleShape, elevated = false),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -1397,18 +1398,51 @@ fun VaultCredentialEditorDialog(
     var serviceTitle by remember { mutableStateOf(existingCredential?.serviceTitle ?: "") }
     var accountUsername by remember { mutableStateOf(existingCredential?.accountUsername ?: "") }
     var rawPassword by remember { mutableStateOf(initialDecryptedPassword) }
+    var isPasswordVisible by remember { mutableStateOf(false) }
     var rawNotes by remember { mutableStateOf(initialDecryptedNotes) }
     var domainOrUrl by remember { mutableStateOf(existingCredential?.domainOrUrl ?: "") }
     var category by remember { mutableStateOf(existingCredential?.category ?: "Security") }
     var generatorLength by remember { mutableIntStateOf(20) }
 
+    val strengthScore = remember(rawPassword) {
+        if (rawPassword.isBlank()) 0 else KeystoreVaultCrypto.scorePasswordEntropy(rawPassword)
+    }
+    val strengthTier = remember(strengthScore) {
+        when {
+            strengthScore >= 75 -> PasswordStrengthTier.STRONG
+            strengthScore >= 45 -> PasswordStrengthTier.FAIR
+            else -> PasswordStrengthTier.WEAK
+        }
+    }
+    val strengthColor = when (strengthTier) {
+        PasswordStrengthTier.STRONG -> SeamSuccessSage
+        PasswordStrengthTier.FAIR -> SeamWarningAmber
+        PasswordStrengthTier.WEAK -> SeamErrorCoral
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = Color(0xF5141520),
+        titleContentColor = SeamWarmIvory,
+        textContentColor = SeamSilver,
         title = {
-            Text(
-                text = if (existingCredential != null) "Edit Vault Credential" else "New Vault Credential",
-                style = MaterialTheme.typography.headlineSmall
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = if (existingCredential != null) "Edit Vault Credential" else "New Vault Credential",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SeamGlassBadge(
+                        text = "Room AES-256-GCM",
+                        tint = SeamLavenderAccent,
+                        borderTint = SeamLavenderAccent.copy(alpha = 0.4f)
+                    )
+                    SeamGlassBadge(
+                        text = "Masked by default",
+                        tint = SeamSilver
+                    )
+                }
+            }
         },
         text = {
             Column(
@@ -1418,9 +1452,9 @@ fun VaultCredentialEditorDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Encrypted locally with Android Keystore AES-256-GCM. Excluded from AI, search, and default backups.",
+                    text = "Encrypted locally with Android Keystore AES-256-GCM inside Room. Excluded from AI, search, and default backups.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = SeamLavenderAccent
+                    color = SeamMutedGrey
                 )
 
                 OutlinedTextField(
@@ -1446,13 +1480,55 @@ fun VaultCredentialEditorDialog(
                 OutlinedTextField(
                     value = rawPassword,
                     onValueChange = { rawPassword = it },
-                    label = { Text("Password") },
+                    label = { Text("Password (Masked by default)") },
                     singleLine = true,
+                    visualTransformation = if (isPasswordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = { isPasswordVisible = !isPasswordVisible },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("vault_editor_toggle_password_visibility")
+                        ) {
+                            Icon(
+                                imageVector = if (isPasswordVisible) {
+                                    Icons.Outlined.VisibilityOff
+                                } else {
+                                    Icons.Outlined.Visibility
+                                },
+                                contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                                tint = SeamSilver
+                            )
+                        }
+                    },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("vault_password_input")
                 )
+
+                if (rawPassword.isNotBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Local strength assessment",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SeamMutedGrey
+                        )
+                        SeamGlassBadge(
+                            text = "${strengthTier.label} · $strengthScore%",
+                            tint = strengthColor,
+                            borderTint = strengthColor.copy(alpha = 0.45f)
+                        )
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

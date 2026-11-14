@@ -49,10 +49,12 @@ import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
 import com.example.data.preferences.AiExecutionMode
 import com.example.data.preferences.UserVaultPreferences
-import com.example.ui.components.AmbientLightBackdrop
 import com.example.ui.components.MemoryConstellationHeroCanvas
+import com.example.ui.components.SeamGlassBackdrop
+import com.example.ui.components.SeamGlassBadge
 import com.example.ui.components.SeamTopHeader
-import com.example.ui.components.seamPressableCard
+import com.example.ui.components.seamGlassSurface
+import com.example.ui.components.seamPressableGlassCard
 import com.example.ui.theme.SeamBorderSubtle
 import com.example.ui.theme.SeamCharcoal
 import com.example.ui.theme.SeamElevatedSurface
@@ -94,11 +96,9 @@ fun SanctuaryScreen(
     val dateFormat = SimpleDateFormat("MMM d · h:mm a", Locale.getDefault())
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
+        modifier = Modifier.fillMaxSize()
     ) {
-        AmbientLightBackdrop(reducedMotion = preferences.reducedMotionEnabled)
+        SeamGlassBackdrop(reducedMotion = preferences.reducedMotionEnabled)
 
         LazyColumn(
             modifier = Modifier
@@ -139,12 +139,11 @@ fun SanctuaryScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
-                        .seamPressableCard(
+                        .seamPressableGlassCard(
                             reducedMotion = preferences.reducedMotionEnabled,
-                            shape = RoundedCornerShape(18.dp),
+                            shape = RoundedCornerShape(22.dp),
                             onClick = { onNavigateToTab(PaperFlowTab.SEARCH) }
                         )
-                        .background(SeamCharcoal)
                         .padding(horizontal = 16.dp)
                         .testTag("home_global_search_bar"),
                     verticalAlignment = Alignment.CenterVertically,
@@ -192,18 +191,12 @@ fun SanctuaryScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(196.dp)
-                        .seamPressableCard(
+                        .seamPressableGlassCard(
                             reducedMotion = preferences.reducedMotionEnabled,
                             shape = RoundedCornerShape(24.dp),
+                            elevated = true,
+                            accentBorder = SeamLavenderAccent.copy(alpha = 0.55f),
                             onClick = { onNavigateToTab(PaperFlowTab.GALLERY) }
-                        )
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF1A1D23),
-                                    Color(0xFF131519)
-                                )
-                            )
                         )
                         .testTag("home_constellation_hero_card")
                 ) {
@@ -302,9 +295,7 @@ fun SanctuaryScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(SeamCharcoal)
-                        .border(1.dp, SeamBorderSubtle, RoundedCornerShape(16.dp))
+                        .seamGlassSurface(shape = RoundedCornerShape(18.dp))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -321,9 +312,10 @@ fun SanctuaryScreen(
                         style = MaterialTheme.typography.labelLarge,
                         color = SeamLavenderAccent,
                         modifier = Modifier
-                            .seamPressableCard(
+                            .seamPressableGlassCard(
                                 reducedMotion = preferences.reducedMotionEnabled,
                                 shape = RoundedCornerShape(10.dp),
+                                elevated = true,
                                 onClick = {
                                     if (preferences.aiExecutionMode == AiExecutionMode.PAUSED) {
                                         onNavigateToTab(PaperFlowTab.SETTINGS)
@@ -343,9 +335,7 @@ fun SanctuaryScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(20.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(22.dp), elevated = true)
                             .padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -398,12 +388,11 @@ fun SanctuaryScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .seamPressableCard(
+                            .seamPressableGlassCard(
                                 reducedMotion = preferences.reducedMotionEnabled,
-                                shape = RoundedCornerShape(18.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 onClick = { onSelectEntry(entry) }
                             )
-                            .background(SeamCharcoal)
                             .padding(horizontal = 16.dp, vertical = 14.dp)
                             .testTag("sanctuary_entry_${entry.id}"),
                         verticalAlignment = Alignment.CenterVertically,
@@ -412,9 +401,7 @@ fun SanctuaryScreen(
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .clip(CircleShape)
-                                .background(SeamElevatedSurface)
-                                .border(1.dp, SeamBorderSubtle, CircleShape),
+                                .seamGlassSurface(shape = CircleShape, elevated = true),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -444,18 +431,10 @@ fun SanctuaryScreen(
                         }
 
                         if (entry.category.isNotBlank()) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(SeamElevatedSurface)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = entry.category,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = SeamSilver
-                                )
-                            }
+                            SeamGlassBadge(
+                                text = entry.category,
+                                tint = SeamSilver
+                            )
                         }
 
                         Icon(
@@ -487,12 +466,11 @@ private fun HomeFeatureRowCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .seamPressableCard(
+            .seamPressableGlassCard(
                 reducedMotion = reducedMotion,
                 shape = RoundedCornerShape(22.dp),
                 onClick = onClick
             )
-            .background(SeamCharcoal)
             .padding(horizontal = 18.dp, vertical = 18.dp)
             .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically,
@@ -501,9 +479,7 @@ private fun HomeFeatureRowCard(
         Box(
             modifier = Modifier
                 .size(46.dp)
-                .clip(CircleShape)
-                .background(SeamElevatedSurface)
-                .border(1.dp, SeamBorderSubtle, CircleShape),
+                .seamGlassSurface(shape = CircleShape, elevated = true),
             contentAlignment = Alignment.Center
         ) {
             Icon(

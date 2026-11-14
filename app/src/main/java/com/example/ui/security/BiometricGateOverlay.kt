@@ -67,6 +67,9 @@ import com.example.R
 import com.example.core.security.BiometricSecurityManager
 import com.example.core.security.BiometricSecurityStatus
 import com.example.ui.components.RawVideoAnimationBanner
+import com.example.ui.components.SeamGlassBackdrop
+import com.example.ui.components.SeamGlassPillButton
+import com.example.ui.components.seamGlassSurface
 import com.example.ui.theme.SeamBorderSubtle
 import com.example.ui.theme.SeamCharcoal
 import com.example.ui.theme.SeamElevatedSurface
@@ -259,12 +262,12 @@ fun BiometricGateOverlay(
         }
     }
 
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .testTag("biometric_gate_overlay"),
-        color = SeamNearBlack
+            .testTag("biometric_gate_overlay")
     ) {
+        SeamGlassBackdrop(reducedMotion = false)
         if (!usePinOrPasswordFallback && securityAssessment.canUseHardwareBiometricPrompt) {
             // HARDWARE BIOMETRIC SENSOR ACTIVE VIEW:
             // Directly calls Android OS BiometricPrompt; no keypad and no misleading icons.
@@ -333,7 +336,9 @@ fun BiometricGateOverlay(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Button(
+                    SeamGlassPillButton(
+                        text = "Verify with Android Biometric Sensor",
+                        leadingIcon = Icons.Default.Lock,
                         onClick = {
                             hasError = false
                             BiometricSecurityManager.authenticateWithSecurityLayer(
@@ -352,28 +357,10 @@ fun BiometricGateOverlay(
                                 }
                             )
                         },
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SeamWarmIvory,
-                            contentColor = SeamNearBlack
-                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(54.dp)
                             .testTag("prompt_android_biometric_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Verify with Android Biometric Sensor",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    )
 
                     TextButton(
                         onClick = {
@@ -543,9 +530,7 @@ fun BiometricGateOverlay(
                             Box(
                                 modifier = Modifier
                                     .size(64.dp)
-                                    .clip(CircleShape)
-                                    .background(SeamCharcoal)
-                                    .border(1.dp, SeamBorderSubtle, CircleShape)
+                                    .seamGlassSurface(shape = CircleShape, elevated = true)
                                     .clickable {
                                         if (enteredPin.isNotEmpty()) {
                                             enteredPin = enteredPin.dropLast(1)
@@ -568,9 +553,7 @@ fun BiometricGateOverlay(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(20.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(22.dp), elevated = true)
                             .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -649,9 +632,7 @@ private fun SecurityHardwareStatusBadge(
 ) {
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(SeamCharcoal)
-            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
+            .seamGlassSurface(shape = RoundedCornerShape(14.dp), elevated = true)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -980,12 +961,12 @@ fun FirstTimeVaultPinSetupScreen(
         }
     }
 
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .testTag("first_time_pin_setup_screen"),
-        color = SeamNearBlack
+            .testTag("first_time_pin_setup_screen")
     ) {
+        SeamGlassBackdrop(reducedMotion = false)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -1002,9 +983,11 @@ fun FirstTimeVaultPinSetupScreen(
                 Box(
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(CircleShape)
-                        .background(SeamCharcoal)
-                        .border(1.dp, SeamLavenderAccent, CircleShape),
+                        .seamGlassSurface(
+                            shape = CircleShape,
+                            elevated = true,
+                            accentBorder = SeamLavenderAccent
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1110,9 +1093,7 @@ fun FirstTimeVaultPinSetupScreen(
                     Box(
                         modifier = Modifier
                             .size(64.dp)
-                            .clip(CircleShape)
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, CircleShape)
+                            .seamGlassSurface(shape = CircleShape, elevated = true)
                             .clickable {
                                 if (!isConfirmStep && firstPin.isNotEmpty()) {
                                     firstPin = firstPin.dropLast(1)
@@ -1144,9 +1125,7 @@ private fun PinKeyButton(
     Box(
         modifier = Modifier
             .size(sizeDp.dp)
-            .clip(CircleShape)
-            .background(SeamCharcoal)
-            .border(1.dp, SeamBorderSubtle, CircleShape)
+            .seamGlassSurface(shape = CircleShape, elevated = true)
             .clickable(onClick = onClick)
             .testTag("pin_key_$label"),
         contentAlignment = Alignment.Center

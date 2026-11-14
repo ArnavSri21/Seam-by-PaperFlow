@@ -162,6 +162,9 @@ class SeamAutofillService : AutofillService() {
                         domainOrUrl = appPackage,
                         category = "Autofill",
                         reuseFingerprint = crypto.computeLocalReuseFingerprint(rawPassword),
+                        passwordStrengthScore = crypto.computePasswordStrengthScore(rawPassword),
+                        maskedPreview = "••••••••••••",
+                        encryptionAlgorithm = "AES-256-GCM",
                         createdAtMillis = now,
                         updatedAtMillis = now
                     )

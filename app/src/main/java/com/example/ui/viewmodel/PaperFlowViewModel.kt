@@ -1,9 +1,12 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.DeviceGalleryAutoImporter
+import com.example.data.local.GalleryPermissionStatus
 import com.example.data.local.VaultCredentialEntity
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
@@ -64,6 +67,14 @@ data class BackgroundStatusState(
     val privateStorageBytes: Long = 0L
 )
 
+data class GallerySyncUiState(
+    val isSyncing: Boolean = false,
+    val processedCount: Int = 0,
+    val totalCount: Int = 0,
+    val progressLabel: String = "",
+    val lastSyncSummary: String = ""
+)
+
 class PaperFlowViewModel(
     private val repository: PaperFlowRepository,
     private val preferencesManager: PreferencesManager,
@@ -102,6 +113,9 @@ class PaperFlowViewModel(
 
     private val _backgroundStatus = MutableStateFlow(BackgroundStatusState())
     val backgroundStatus: StateFlow<BackgroundStatusState> = _backgroundStatus.asStateFlow()
+
+    private val _gallerySyncState = MutableStateFlow(GallerySyncUiState())
+    val gallerySyncState: StateFlow<GallerySyncUiState> = _gallerySyncState.asStateFlow()
 
     private val _uiBannerMessage = MutableStateFlow<String?>(null)
     val uiBannerMessage: StateFlow<String?> = _uiBannerMessage.asStateFlow()
@@ -609,6 +623,186 @@ class PaperFlowViewModel(
                 isAnalyzingOrSyncing = false,
                 pillLabel = "Local Sanctuary Ready"
             )
+        }
+    }
+
+    fun markGalleryPermissionPrompted() {
+        viewModelScope.launch {
+            preferencesManager.markGalleryPermissionPrompted()
+        }
+    }
+
+    fun syncDeviceGalleryPhotos(
+        context: Context,
+        enableGeminiVisionIfPermitted: Boolean = true
+    ) {
+        if (_gallerySyncState.value.isSyncing) return
+        viewModelScope.launch {
+            try {
+                val permStatus = DeviceGalleryAutoImporter.getGalleryPermissionStatus(context)
+                if (permStatus == GalleryPermissionStatus.DENIED) {
+                    _uiBannerMessage.value = "Grant gallery permission or select photos to auto-import into Memories."
+                    return@launch
+                }
+
+                val prefs = preferences.value
+                val shouldRunGemini = enableGeminiVisionIfPermitted &&
+                    (prefs.aiExecutionMode == AiExecutionMode.CLOUD_GEMINI_OPT_IN || prefs.hasConsentedToCloudAi)
+
+                _gallerySyncState.value = GallerySyncUiState(
+                    isSyncing = true,
+                    progressLabel = "Scanning device photo library…"
+                )
+
+                val recentPhotos = DeviceGalleryAutoImporter.queryRecentDevicePhotos(context, limit = 50)
+                if (recentPhotos.isEmpty()) {
+                    _gallerySyncState.value = GallerySyncUiState(
+                        isSyncing = false,
+                        lastSyncSummary = "No new photos found in device gallery."
+                    )
+                    return@launch
+                }
+
+                val result = repository.autoImportDevicePhotos(
+                    userId = currentUserId,
+                    assets = recentPhotos,
+                    runGeminiVision = shouldRunGemini
+                ) { processed, total, label ->
+                    _gallerySyncState.value = GallerySyncUiState(
+                        isSyncing = true,
+                        processedCount = processed,
+                        totalCount = total,
+                        progressLabel = label
+                    )
+                }
+
+                refreshStorageAndBatteryMetrics()
+
+                val summary = when {
+                    result.newlyImportedCount > 0 -> {
+                        val modeText = if (shouldRunGemini) "Gemini Vision & Local AI" else "On-Device AI"
+                        "Auto-added ${result.newlyImportedCount} photos with $modeText keywords."
+                    }
+                    result.skippedDuplicateCount > 0 ->
+                        "Gallery up to date (${result.skippedDuplicateCount} photos already in Memories)."
+                    else -> "No new photos to import."
+                }
+                val finalMessage = if (!result.aiErrorMessage.isNullOrBlank()) {
+                    "$summary (Cloud AI note: ${result.aiErrorMessage})"
+                } else {
+                    summary
+                }
+
+                _gallerySyncState.value = GallerySyncUiState(
+                    isSyncing = false,
+                    lastSyncSummary = finalMessage
+                )
+                if (result.newlyImportedCount > 0 || !result.aiErrorMessage.isNullOrBlank()) {
+                    _uiBannerMessage.value = finalMessage
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _gallerySyncState.value = GallerySyncUiState(
+                    isSyncing = false,
+                    lastSyncSummary = "Photo sync failed: ${e.localizedMessage}"
+                )
+                _uiBannerMessage.value = "Photo sync failed: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun importMultiplePickedPhotosWithAi(
+        uris: List<Uri>,
+        useGeminiVision: Boolean
+    ) {
+        if (uris.isEmpty() || _gallerySyncState.value.isSyncing) return
+        viewModelScope.launch {
+            try {
+                if (useGeminiVision) {
+                    preferencesManager.setAiExecutionMode(AiExecutionMode.CLOUD_GEMINI_OPT_IN, cloudConsentGranted = true)
+                }
+                _gallerySyncState.value = GallerySyncUiState(
+                    isSyncing = true,
+                    totalCount = uris.size,
+                    progressLabel = "Importing ${uris.size} photos & generating AI tokens…"
+                )
+                val result = repository.importPickedUrisWithAi(
+                    userId = currentUserId,
+                    uris = uris,
+                    runGeminiVision = useGeminiVision
+                ) { processed, total, label ->
+                    _gallerySyncState.value = GallerySyncUiState(
+                        isSyncing = true,
+                        processedCount = processed,
+                        totalCount = total,
+                        progressLabel = label
+                    )
+                }
+                refreshStorageAndBatteryMetrics()
+                val msg = if (!result.aiErrorMessage.isNullOrBlank()) {
+                    "Added ${result.newlyImportedCount} photos with on-device tokens (Cloud AI: ${result.aiErrorMessage})."
+                } else {
+                    "Added ${result.newlyImportedCount} photos with AI searchable keywords."
+                }
+                _gallerySyncState.value = GallerySyncUiState(isSyncing = false, lastSyncSummary = msg)
+                _uiBannerMessage.value = msg
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _gallerySyncState.value = GallerySyncUiState(isSyncing = false)
+                _uiBannerMessage.value = "Import failed: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun runAiKeywordTaggingOnAllMemories(useGeminiVision: Boolean) {
+        if (_gallerySyncState.value.isSyncing) return
+        viewModelScope.launch {
+            try {
+                if (useGeminiVision) {
+                    preferencesManager.setAiExecutionMode(AiExecutionMode.CLOUD_GEMINI_OPT_IN, cloudConsentGranted = true)
+                }
+                _gallerySyncState.value = GallerySyncUiState(
+                    isSyncing = true,
+                    progressLabel = "Generating searchable AI tokens for Memories…"
+                )
+                val result = repository.batchAiTagMemories(
+                    userId = currentUserId,
+                    useGeminiVision = useGeminiVision
+                ) { processed, total, label ->
+                    _gallerySyncState.value = GallerySyncUiState(
+                        isSyncing = true,
+                        processedCount = processed,
+                        totalCount = total,
+                        progressLabel = label
+                    )
+                }
+                refreshStorageAndBatteryMetrics()
+                val msg = if (!result.aiErrorMessage.isNullOrBlank()) {
+                    "Indexed ${result.aiTaggedCount} photos locally (Cloud AI: ${result.aiErrorMessage})."
+                } else {
+                    "AI added searchable keywords & tokens to ${result.aiTaggedCount} photos."
+                }
+                _gallerySyncState.value = GallerySyncUiState(isSyncing = false, lastSyncSummary = msg)
+                _uiBannerMessage.value = msg
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _gallerySyncState.value = GallerySyncUiState(isSyncing = false)
+                _uiBannerMessage.value = "AI tagging failed: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun openSearchWithToken(token: String) {
+        val clean = token.trim()
+        if (clean.isNotBlank()) {
+            _searchFilter.value = _searchFilter.value.copy(
+                query = clean,
+                selectedType = VaultItemType.GALLERY
+            )
+            _currentTab.value = PaperFlowTab.SEARCH
         }
     }
 

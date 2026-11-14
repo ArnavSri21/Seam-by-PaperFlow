@@ -94,21 +94,34 @@ class MindfulAiService {
             }
 
             val promptText = buildString {
-                appendLine("Analyze and organize this personal vault entry for a mindful space app called Paper Flow.")
-                appendLine("Entry Type: ${entry.itemType}")
-                appendLine("Title: ${entry.title}")
-                if (entry.itemType == "PASSWORD") {
-                    // Never send the raw password value; only analyze service title, username label, and domain
-                    appendLine("Account / Label: ${entry.primaryContent}")
-                    appendLine("Domain / Service: ${entry.websiteOrLocation}")
-                    appendLine("Generate semantic keywords for finding this credential (e.g., login, account, service category, banking, developer, email, cloud, security).")
+                if (entry.itemType == "GALLERY") {
+                    appendLine("You are an Apple Photos-style visual search indexer inside Paper Flow.")
+                    appendLine("Inspect the photo carefully (objects, subjects, scenery, setting, activities, lighting, colors, architecture, food, animals, visible text/signs, season).")
+                    appendLine("Album / Bucket: ${entry.folderOrAlbum}")
+                    if (entry.title.isNotBlank()) appendLine("Filename / Title: ${entry.title}")
+                    if (entry.primaryContent.isNotBlank()) appendLine("User Caption: ${entry.primaryContent}")
+                    appendLine("Return:")
+                    appendLine("- category: 1-2 word album theme (e.g., Nature, Portrait, Travel, Food, Architecture, Pets, Screenshots, Moments)")
+                    appendLine("- moodTag: 1 word visual tone (e.g., Luminous, Serene, Cozy, Vibrant, Nostalgic, Grounded)")
+                    appendLine("- aiSummary: clear 1-sentence visual description of what is visible in the photo")
+                    appendLine("- aiKeywords: 14-20 comma-separated lowercase single-word or 2-word searchable tokens covering exact visible objects, colors, setting, time of day, visible text, and synonyms so a user can search for anything in this photo.")
                 } else {
-                    appendLine("Content / Reflection: ${entry.primaryContent}")
-                    if (entry.websiteOrLocation.isNotBlank()) {
-                        appendLine("Context / Location: ${entry.websiteOrLocation}")
+                    appendLine("Analyze and organize this personal vault entry for a mindful space app called Paper Flow.")
+                    appendLine("Entry Type: ${entry.itemType}")
+                    appendLine("Title: ${entry.title}")
+                    if (entry.itemType == "PASSWORD") {
+                        // Never send the raw password value; only analyze service title, username label, and domain
+                        appendLine("Account / Label: ${entry.primaryContent}")
+                        appendLine("Domain / Service: ${entry.websiteOrLocation}")
+                        appendLine("Generate semantic keywords for finding this credential (e.g., login, account, service category, banking, developer, email, cloud, security).")
+                    } else {
+                        appendLine("Content / Reflection: ${entry.primaryContent}")
+                        if (entry.websiteOrLocation.isNotBlank()) {
+                            appendLine("Context / Location: ${entry.websiteOrLocation}")
+                        }
                     }
+                    appendLine("Provide a refined category, a mindful moodTag, a 1-sentence aiSummary, and rich comma-separated aiKeywords (synonyms, related themes, feelings, and concepts) so the user can find this item even when searching for similar keywords.")
                 }
-                appendLine("Provide a refined category, a mindful moodTag, a 1-sentence aiSummary, and rich comma-separated aiKeywords (synonyms, related themes, feelings, and concepts) so the user can find this item even when searching for similar keywords.")
             }
 
             val response = withTimeout(60_000L) {

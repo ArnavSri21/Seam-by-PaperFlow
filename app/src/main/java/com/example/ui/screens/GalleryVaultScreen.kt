@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,6 +15,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -40,27 +44,26 @@ import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.IosShare
-import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.ViewList
-import androidx.compose.material.icons.outlined.ViewModule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,51 +72,66 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.local.DeviceGalleryAutoImporter
+import com.example.data.local.GalleryPermissionStatus
 import com.example.data.local.VaultEntryEntity
-import com.example.ui.components.AmbientLightBackdrop
+import com.example.data.preferences.AiExecutionMode
+import com.example.data.preferences.UserVaultPreferences
+import com.example.ui.components.SeamGlassBackdrop
+import com.example.ui.components.SeamGlassBadge
+import com.example.ui.components.SeamGlassSearchField
 import com.example.ui.components.SeamTopHeader
-import com.example.ui.components.seamPressableCard
-import com.example.ui.theme.SeamBorderSubtle
-import com.example.ui.theme.SeamCharcoal
-import com.example.ui.theme.SeamElevatedSurface
+import com.example.ui.components.seamGlassSurface
+import com.example.ui.components.seamPressableGlassCard
 import com.example.ui.theme.SeamErrorCoral
 import com.example.ui.theme.SeamLavenderAccent
 import com.example.ui.theme.SeamMutedGrey
 import com.example.ui.theme.SeamNearBlack
 import com.example.ui.theme.SeamSilver
+import com.example.ui.theme.SeamSuccessSage
 import com.example.ui.theme.SeamWarmIvory
+import com.example.ui.viewmodel.GallerySyncUiState
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class GalleryViewDensity {
-    COMFORTABLE_GRID,
-    COMPACT_GRID,
-    ACCESSIBLE_LIST
+enum class ApplePhotosTimelineMode(val label: String) {
+    YEARS("Years"),
+    MONTHS("Months"),
+    ALL_PHOTOS("All Photos"),
+    LIST("List")
 }
 
 /**
- * 03 · Memories and gallery (Pages 5–6 of Seam by PaperFlow UI/UX Specification):
- * - Left: Memory timeline grouped by month/year with sticky date headings, grid density toggle
- *   (Comfortable 2-col / Compact 3-col / Accessible List), filters, "Recently imported" card,
- *   and explicit choice before copying vs linking media into Seam's private storage.
- * - Right: Individual Memory Detail with full-width media viewer, swipe navigation, opt-in location,
- *   "Add to collection / Choose an album or tag", storage mode status, and dismissible Related Items.
+ * Apple Photos-inspired Memories screen inside Smoked Glass UI:
+ * - Automatically requests Android gallery permission on entry and auto-imports device photos.
+ * - Generates searchable AI keywords & tokens (on-device pixel/temporal tokenizer + Gemini Vision).
+ * - Clean Apple Photos visual mosaic (Years / Months / All Photos segmented frosted glass pill,
+ *   Collections album strip, trending AI keyword chips, and full-bleed Apple Photos detail viewer).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GalleryVaultScreen(
     galleryEntries: List<VaultEntryEntity>,
-    reducedMotion: Boolean = false,
+    preferences: UserVaultPreferences,
+    gallerySyncState: GallerySyncUiState,
+    onAutoSyncDeviceGallery: (enableGeminiVision: Boolean) -> Unit,
+    onImportMultiplePickedPhotos: (List<Uri>, Boolean) -> Unit,
+    onRunAiTagAllMemories: (Boolean) -> Unit,
+    onMarkGalleryPermissionPrompted: () -> Unit,
+    onOpenGlobalSearchWithToken: (String) -> Unit,
     onPhotoPickedForVault: (Uri) -> Unit,
     onOpenNewGalleryDialog: () -> Unit,
     onSelectEntry: (VaultEntryEntity) -> Unit,
@@ -122,20 +140,45 @@ fun GalleryVaultScreen(
     onDeleteEntry: (VaultEntryEntity) -> Unit,
     onOpenSettings: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val reducedMotion = preferences.reducedMotionEnabled
+
     var localSearchQuery by remember { mutableStateOf("") }
     var selectedAlbum by remember { mutableStateOf("All") }
     var onlyFavorites by remember { mutableStateOf(false) }
-    var viewDensity by remember { mutableStateOf(GalleryViewDensity.COMFORTABLE_GRID) }
-    var showFiltersRow by remember { mutableStateOf(false) }
+    var timelineMode by remember { mutableStateOf(ApplePhotosTimelineMode.MONTHS) }
 
-    // Selected memory for full-screen Memory Detail view (Page 5 right screenshot)
     var activeDetailMemoryId by remember { mutableStateOf<Long?>(null) }
+    var showAiConsentOrRunDialog by remember { mutableStateOf(false) }
 
-    // Ask before copying vs linking media modal (Page 5 requirement)
-    var showImportChoiceDialog by remember { mutableStateOf(false) }
-    var copyToPrivateStorageMode by remember { mutableStateOf(true) }
+    var permissionStatus by remember {
+        mutableStateOf(DeviceGalleryAutoImporter.getGalleryPermissionStatus(context))
+    }
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        val updated = DeviceGalleryAutoImporter.getGalleryPermissionStatus(context)
+        permissionStatus = updated
+        if (updated != GalleryPermissionStatus.DENIED) {
+            val useGemini = preferences.aiExecutionMode == AiExecutionMode.CLOUD_GEMINI_OPT_IN ||
+                preferences.hasConsentedToCloudAi
+            onAutoSyncDeviceGallery(useGemini)
+        }
+    }
+
+    val multiPhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 40)
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            val useGemini = preferences.aiExecutionMode == AiExecutionMode.CLOUD_GEMINI_OPT_IN ||
+                preferences.hasConsentedToCloudAi
+            onImportMultiplePickedPhotos(uris, useGemini)
+        }
+    }
+
+    // Single photo picker retained for direct detail relink/import
+    val singlePhotoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
@@ -143,21 +186,61 @@ fun GalleryVaultScreen(
         }
     }
 
-    val albums = remember(galleryEntries) {
-        listOf("All") + galleryEntries.map { it.folderOrAlbum.ifBlank { "Timeline" } }.distinct()
+    // Automatically ask gallery permission on first Memories visit OR auto-sync new photos when already granted
+    LaunchedEffect(Unit) {
+        val currentStatus = DeviceGalleryAutoImporter.getGalleryPermissionStatus(context)
+        permissionStatus = currentStatus
+        val useGemini = preferences.aiExecutionMode == AiExecutionMode.CLOUD_GEMINI_OPT_IN ||
+            preferences.hasConsentedToCloudAi
+        if (currentStatus != GalleryPermissionStatus.DENIED) {
+            onAutoSyncDeviceGallery(useGemini)
+        } else if (!preferences.hasPromptedGalleryPermission) {
+            onMarkGalleryPermissionPrompted()
+            galleryPermissionLauncher.launch(DeviceGalleryAutoImporter.requiredGalleryPermissions())
+        }
+    }
+
+    // Extract trending AI tokens across all gallery items so user can tap any token to filter
+    val trendingAiTokens = remember(galleryEntries) {
+        galleryEntries
+            .flatMap { entry ->
+                entry.aiKeywords.split(",").map { it.trim().lowercase() }
+            }
+            .filter { it.length in 3..20 && it !in setOf("photo", "memory", "image") }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+            .take(10)
+    }
+
+    // Derive Apple Photos-style Albums / Collections with cover thumbnails
+    val albumCollections = remember(galleryEntries) {
+        galleryEntries
+            .groupBy { it.folderOrAlbum.ifBlank { "Recents" } }
+            .entries
+            .sortedByDescending { it.value.size }
+            .map { (name, items) ->
+                Triple(name, items.size, items.firstOrNull()?.mediaPath.orEmpty())
+            }
     }
 
     val visibleMemories = remember(galleryEntries, localSearchQuery, selectedAlbum, onlyFavorites) {
         galleryEntries.filter { item ->
-            val albumMatch = selectedAlbum == "All" || item.folderOrAlbum.equals(selectedAlbum, ignoreCase = true)
+            val albumMatch = selectedAlbum == "All" ||
+                item.folderOrAlbum.equals(selectedAlbum, ignoreCase = true) ||
+                item.category.equals(selectedAlbum, ignoreCase = true)
             val favMatch = !onlyFavorites || item.isFavorite
             val q = localSearchQuery.trim().lowercase()
-            val queryMatch = q.isBlank() ||
-                item.title.lowercase().contains(q) ||
-                item.primaryContent.lowercase().contains(q) ||
-                item.websiteOrLocation.lowercase().contains(q) ||
-                item.category.lowercase().contains(q) ||
-                item.aiKeywords.lowercase().contains(q)
+            val queryMatch = if (q.isBlank()) {
+                true
+            } else {
+                val blob = "${item.title} ${item.primaryContent} ${item.websiteOrLocation} ${item.folderOrAlbum} ${item.category} ${item.moodTag} ${item.aiSummary} ${item.aiKeywords} ${item.ocrExtractedText}".lowercase()
+                q.split(Regex("\\s+")).filter { it.isNotBlank() }.all { token ->
+                    blob.contains(token)
+                }
+            }
             albumMatch && favMatch && queryMatch
         }
     }
@@ -166,95 +249,62 @@ fun GalleryVaultScreen(
         visibleMemories.indexOfFirst { it.id == activeDetailMemoryId }
     }
 
-    if (showImportChoiceDialog) {
+    if (showAiConsentOrRunDialog) {
         AlertDialog(
-            onDismissRequest = { showImportChoiceDialog = false },
+            onDismissRequest = { showAiConsentOrRunDialog = false },
+            containerColor = Color(0xF2151521),
             title = {
                 Text(
-                    text = "Import into Memories",
-                    style = MaterialTheme.typography.headlineSmall
+                    text = "AI Keyword & Token Indexer",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = SeamWarmIvory
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Choose how Seam should store your selected photo:",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "Choose how Seam should generate searchable objects, colors, lighting, scenes, and keyword tokens for your ${galleryEntries.size} photos:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SeamSilver
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (copyToPrivateStorageMode) SeamElevatedSurface else SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
-                            .clickable { copyToPrivateStorageMode = true }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Private local copy (Recommended)",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = SeamWarmIvory
-                            )
-                            Text(
-                                text = "Copies the file into Seam's app-private folder (`files/private_gallery_vault`) so it remains available even if the original URI expires.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SeamMutedGrey
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (!copyToPrivateStorageMode) SeamElevatedSurface else SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
-                            .clickable { copyToPrivateStorageMode = false }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Linked media reference",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = SeamWarmIvory
-                            )
-                            Text(
-                                text = "Saves storage space by referencing the system URI, but access may expire if the source file is moved or deleted.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SeamMutedGrey
-                            )
-                        }
-                    }
+                    Text(
+                        text = "• Gemini Vision AI inspects actual photo pixels for specific objects & scenes.\n• On-Device Engine runs 100% offline using color palette, lighting, album & date tokens.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SeamMutedGrey
+                    )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        showImportChoiceDialog = false
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        showAiConsentOrRunDialog = false
+                        onRunAiTagAllMemories(true)
                     },
-                    modifier = Modifier.testTag("confirm_photo_picker_import")
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SeamLavenderAccent,
+                        contentColor = SeamNearBlack
+                    )
                 ) {
-                    Text("Select photo")
+                    Text("Run Gemini Vision AI")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showImportChoiceDialog = false }) {
-                    Text("Cancel")
+                TextButton(
+                    onClick = {
+                        showAiConsentOrRunDialog = false
+                        onRunAiTagAllMemories(false)
+                    }
+                ) {
+                    Text("On-Device Only", color = SeamSilver)
                 }
             }
         )
     }
 
-    // If a memory is selected, show the full-screen Memory Detail view (Page 5 Right Screenshot)
+    // Full-screen Apple Photos detail viewer
     if (activeDetailIndex >= 0) {
         val currentMemory = visibleMemories[activeDetailIndex]
-        MemoryDetailView(
+        ApplePhotosDetailViewer(
             memory = currentMemory,
             allVisibleMemories = visibleMemories,
             currentIndex = activeDetailIndex,
@@ -266,417 +316,779 @@ fun GalleryVaultScreen(
             onToggleFavorite = { onToggleFavorite(currentMemory) },
             onEditMemory = { onSelectEntry(currentMemory) },
             onAnalyzeWithAi = { onAnalyzeEntryWithAi(currentMemory) },
+            onTokenClicked = { token ->
+                activeDetailMemoryId = null
+                onOpenGlobalSearchWithToken(token)
+            },
             onDeleteMemory = {
                 activeDetailMemoryId = null
                 onDeleteEntry(currentMemory)
             },
             onReimportMissingMedia = {
-                showImportChoiceDialog = true
+                singlePhotoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
             }
         )
         return
     }
 
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
-    val groupedByMonth = remember(visibleMemories) {
-        visibleMemories.groupBy { entry ->
-            monthFormat.format(Date(entry.createdAtMillis)).uppercase(Locale.getDefault())
+    val yearFormat = remember { SimpleDateFormat("yyyy", Locale.getDefault()) }
+
+    val groupedSections = remember(visibleMemories, timelineMode) {
+        when (timelineMode) {
+            ApplePhotosTimelineMode.YEARS -> visibleMemories.groupBy {
+                yearFormat.format(Date(it.createdAtMillis))
+            }
+            ApplePhotosTimelineMode.MONTHS, ApplePhotosTimelineMode.LIST -> visibleMemories.groupBy {
+                monthFormat.format(Date(it.createdAtMillis))
+            }
+            ApplePhotosTimelineMode.ALL_PHOTOS -> {
+                if (visibleMemories.isEmpty()) emptyMap()
+                else mapOf("All Photos" to visibleMemories)
+            }
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
-    ) {
-        AmbientLightBackdrop(reducedMotion = reducedMotion)
+    val aiTaggedCount = remember(galleryEntries) {
+        galleryEntries.count { it.isAnalyzed && it.aiKeywords.isNotBlank() }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        SeamGlassBackdrop(reducedMotion = reducedMotion)
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("gallery_list"),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Top Header
+            // 1. Minimal Status Top Header
             item {
                 SeamTopHeader(
-                    statusLabel = "${galleryEntries.size} memories",
+                    statusLabel = if (gallerySyncState.isSyncing) {
+                        "AI Tagging…"
+                    } else {
+                        "${galleryEntries.size} Photos · $aiTaggedCount AI Indexed"
+                    },
+                    isStatusActive = gallerySyncState.isSyncing,
                     reducedMotion = reducedMotion,
                     onSettingsClick = onOpenSettings
                 )
             }
 
-            // 2. Title & Subtitle ("Memories" / "Moments, gathered in one place.")
+            // 2. Apple Photos Header Bar (Title + Circular Frosted Glass Action Pills)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "Memories",
-                            style = MaterialTheme.typography.displayLarge,
+                            text = "Photos",
+                            style = MaterialTheme.typography.displayLarge.copy(
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = SeamWarmIvory
                         )
                         Text(
-                            text = "Moments, gathered in one place.",
-                            style = MaterialTheme.typography.bodyLarge,
+                            text = "${visibleMemories.size} items · Private AI Library",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = SeamMutedGrey
                         )
                     }
 
-                    // Grid density toggle (Comfortable / Compact / Accessible List)
                     Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(14.dp))
-                            .padding(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { viewDensity = GalleryViewDensity.COMFORTABLE_GRID },
-                            modifier = Modifier.size(36.dp)
+                        // Sync Gallery Button
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .seamPressableGlassCard(
+                                    reducedMotion = reducedMotion,
+                                    shape = RoundedCornerShape(21.dp),
+                                    elevated = true,
+                                    onClick = {
+                                        if (permissionStatus == GalleryPermissionStatus.DENIED) {
+                                            galleryPermissionLauncher.launch(
+                                                DeviceGalleryAutoImporter.requiredGalleryPermissions()
+                                            )
+                                        } else {
+                                            val useGemini = preferences.aiExecutionMode == AiExecutionMode.CLOUD_GEMINI_OPT_IN ||
+                                                preferences.hasConsentedToCloudAi
+                                            onAutoSyncDeviceGallery(useGemini)
+                                        }
+                                    }
+                                )
+                                .testTag("sync_gallery_button"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.GridView,
-                                contentDescription = "Comfortable Grid",
-                                tint = if (viewDensity == GalleryViewDensity.COMFORTABLE_GRID) SeamWarmIvory else SeamMutedGrey,
-                                modifier = Modifier.size(18.dp)
+                                imageVector = Icons.Outlined.Sync,
+                                contentDescription = "Sync device gallery photos",
+                                tint = SeamWarmIvory,
+                                modifier = Modifier.size(19.dp)
                             )
                         }
-                        IconButton(
-                            onClick = { viewDensity = GalleryViewDensity.COMPACT_GRID },
-                            modifier = Modifier.size(36.dp)
+
+                        // Batch AI Keyword Indexer Button
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .seamPressableGlassCard(
+                                    reducedMotion = reducedMotion,
+                                    shape = RoundedCornerShape(21.dp),
+                                    elevated = true,
+                                    accentBorder = SeamLavenderAccent.copy(alpha = 0.55f),
+                                    onClick = { showAiConsentOrRunDialog = true }
+                                )
+                                .testTag("ai_tag_all_photos_button"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.ViewModule,
-                                contentDescription = "Compact Grid",
-                                tint = if (viewDensity == GalleryViewDensity.COMPACT_GRID) SeamWarmIvory else SeamMutedGrey,
-                                modifier = Modifier.size(18.dp)
+                                imageVector = Icons.Outlined.AutoAwesome,
+                                contentDescription = "Run AI keyword & token indexing",
+                                tint = SeamLavenderAccent,
+                                modifier = Modifier.size(19.dp)
                             )
                         }
-                        IconButton(
-                            onClick = { viewDensity = GalleryViewDensity.ACCESSIBLE_LIST },
-                            modifier = Modifier.size(36.dp)
+
+                        // Multi-select Photo Picker Add Button
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .seamPressableGlassCard(
+                                    reducedMotion = reducedMotion,
+                                    shape = RoundedCornerShape(21.dp),
+                                    elevated = true,
+                                    onClick = {
+                                        multiPhotoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }
+                                )
+                                .testTag("pick_photo_vault_button"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.ViewList,
-                                contentDescription = "Accessible List View",
-                                tint = if (viewDensity == GalleryViewDensity.ACCESSIBLE_LIST) SeamWarmIvory else SeamMutedGrey,
-                                modifier = Modifier.size(18.dp)
+                                imageVector = Icons.Outlined.AddPhotoAlternate,
+                                contentDescription = "Pick photos to add",
+                                tint = SeamWarmIvory,
+                                modifier = Modifier.size(19.dp)
                             )
                         }
                     }
                 }
             }
 
-            // 3. Search Bar ("Search places, dates or moments")
+            // 3. Live AI Import / Tagging Progress Bar
             item {
-                OutlinedTextField(
+                AnimatedVisibility(visible = gallerySyncState.isSyncing) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .seamGlassSurface(
+                                shape = RoundedCornerShape(20.dp),
+                                elevated = true,
+                                accentBorder = SeamLavenderAccent.copy(alpha = 0.6f)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = SeamLavenderAccent
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = gallerySyncState.progressLabel.ifBlank { "Scanning gallery & generating AI tokens…" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = SeamWarmIvory,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (gallerySyncState.totalCount > 0) {
+                                Text(
+                                    text = "${gallerySyncState.processedCount} of ${gallerySyncState.totalCount} photos",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SeamLavenderAccent
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Gallery Permission & Auto-Import Glass Prompt (when permission not full)
+            if (permissionStatus != GalleryPermissionStatus.GRANTED_FULL) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .seamGlassSurface(
+                                shape = RoundedCornerShape(22.dp),
+                                elevated = true,
+                                accentBorder = SeamLavenderAccent.copy(alpha = 0.45f)
+                            )
+                            .padding(16.dp)
+                            .testTag("gallery_permission_card"),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .seamGlassSurface(shape = CircleShape, elevated = true),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.PhotoLibrary,
+                                    contentDescription = null,
+                                    tint = SeamLavenderAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (permissionStatus == GalleryPermissionStatus.GRANTED_SELECTED_ONLY) {
+                                        "Selected Photos Access Active"
+                                    } else {
+                                        "Auto-Import Device Photos with AI"
+                                    },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = SeamWarmIvory,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = if (permissionStatus == GalleryPermissionStatus.GRANTED_SELECTED_ONLY) {
+                                        "Allow full gallery access to auto-add all photos & generate AI search keywords."
+                                    } else {
+                                        "Grant gallery permission so Seam automatically brings in your photos and tags them with AI keywords for instant search."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SeamMutedGrey
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    onMarkGalleryPermissionPrompted()
+                                    galleryPermissionLauncher.launch(
+                                        DeviceGalleryAutoImporter.requiredGalleryPermissions()
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SeamWarmIvory,
+                                    contentColor = SeamNearBlack
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("grant_gallery_permission_button")
+                            ) {
+                                Text(
+                                    text = if (permissionStatus == GalleryPermissionStatus.GRANTED_SELECTED_ONLY) {
+                                        "Allow Full Gallery"
+                                    } else {
+                                        "Allow Gallery"
+                                    },
+                                    maxLines = 1
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    multiPhotoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Pick Photos", color = SeamWarmIvory, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Apple Photos Search Pill ("Objects, colors, places, or AI tokens")
+            item {
+                SeamGlassSearchField(
                     value = localSearchQuery,
                     onValueChange = { localSearchQuery = it },
-                    placeholder = {
-                        Text(
-                            text = "Search places, dates or moments",
-                            color = SeamMutedGrey
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = "Search Memories",
-                            tint = SeamMutedGrey
-                        )
-                    },
-                    trailingIcon = {
-                        IconButton(
-                            onClick = { showFiltersRow = !showFiltersRow },
-                            modifier = Modifier.minimumInteractiveComponentSize()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Tune,
-                                contentDescription = "Toggle album & favorite filters",
-                                tint = if (showFiltersRow || selectedAlbum != "All" || onlyFavorites) SeamLavenderAccent else SeamSilver
-                            )
+                    placeholder = "Search objects, colors, albums, or AI tokens",
+                    leadingIcon = Icons.Outlined.Search,
+                    trailingContent = {
+                        if (localSearchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { localSearchQuery = "" },
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Close,
+                                    contentDescription = "Clear search",
+                                    tint = SeamSilver
+                                )
+                            }
                         }
                     },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("memories_search_input")
                 )
             }
 
-            // 4. Filter Chips (Albums & Favorites)
+            // 6. Trending AI Search Tokens Ribbon (Tap any token to filter instantly!)
+            if (trendingAiTokens.isNotEmpty()) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (onlyFavorites) SeamLavenderAccent.copy(alpha = 0.25f) else Color(0x9E191924)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (onlyFavorites) SeamLavenderAccent else Color.White.copy(alpha = 0.16f),
+                                    RoundedCornerShape(16.dp)
+                                )
+                                .clickable { onlyFavorites = !onlyFavorites }
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (onlyFavorites) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                contentDescription = null,
+                                tint = if (onlyFavorites) SeamErrorCoral else SeamSilver,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Favorites",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = SeamWarmIvory
+                            )
+                        }
+
+                        trendingAiTokens.forEach { token ->
+                            val isSelected = localSearchQuery.equals(token, ignoreCase = true)
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(
+                                        if (isSelected) SeamLavenderAccent.copy(alpha = 0.28f) else Color(0x9E191924)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) SeamLavenderAccent else Color.White.copy(alpha = 0.15f),
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .clickable {
+                                        localSearchQuery = if (isSelected) "" else token
+                                    }
+                                    .padding(horizontal = 11.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Tag,
+                                    contentDescription = null,
+                                    tint = if (isSelected) SeamWarmIvory else SeamLavenderAccent,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = token,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (isSelected) SeamWarmIvory else SeamSilver
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 7. Apple Photos-Style Segmented Glass Pill Switcher: Years · Months · All Photos · List
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .seamGlassSurface(shape = RoundedCornerShape(24.dp), elevated = true)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
-                        selected = onlyFavorites,
-                        onClick = { onlyFavorites = !onlyFavorites },
-                        label = { Text("Favorites") }
-                    )
-                    albums.forEach { album ->
-                        FilterChip(
-                            selected = selectedAlbum == album,
-                            onClick = { selectedAlbum = album },
-                            label = { Text(album) }
-                        )
-                    }
-                }
-            }
-
-            // 5. Launch-Ready Empty State or Sticky Month/Year Timeline Sections
-            if (visibleMemories.isEmpty()) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
-                            .padding(24.dp)
-                            .testTag("gallery_empty_state_card"),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = if (galleryEntries.isEmpty()) "No memories yet" else "No matching memories",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = SeamWarmIvory,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = if (galleryEntries.isEmpty()) {
-                                "Your private gallery is clean and ready. Import your first photo below to store it securely inside app-private phone storage."
-                            } else {
-                                "Try clearing your search or album filter to see all saved memories."
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = SeamMutedGrey
-                        )
-                    }
-                }
-            }
-
-            groupedByMonth.forEach { (monthHeading, monthItems) ->
-                stickyHeader(key = "header_$monthHeading") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(SeamNearBlack.copy(alpha = 0.94f))
-                            .padding(vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = monthHeading,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = SeamMutedGrey
-                        )
-                    }
-                }
-
-                when (viewDensity) {
-                    GalleryViewDensity.COMFORTABLE_GRID -> {
-                        val rows = monthItems.chunked(2)
-                        items(rows, key = { row -> "grid2_${row.first().id}" }) { rowPair ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                rowPair.forEach { item ->
-                                    MemoryGridTile(
-                                        entry = item,
-                                        reducedMotion = reducedMotion,
-                                        compact = false,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { activeDetailMemoryId = item.id }
-                                    )
-                                }
-                                if (rowPair.size == 1) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-
-                    GalleryViewDensity.COMPACT_GRID -> {
-                        val rows = monthItems.chunked(3)
-                        items(rows, key = { row -> "grid3_${row.first().id}" }) { rowTriple ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                rowTriple.forEach { item ->
-                                    MemoryGridTile(
-                                        entry = item,
-                                        reducedMotion = reducedMotion,
-                                        compact = true,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { activeDetailMemoryId = item.id }
-                                    )
-                                }
-                                repeat(3 - rowTriple.size) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-
-                    GalleryViewDensity.ACCESSIBLE_LIST -> {
-                        items(monthItems, key = { "list_${it.id}" }) { item ->
-                            MemoryAccessibleListRow(
-                                entry = item,
-                                reducedMotion = reducedMotion,
-                                onClick = { activeDetailMemoryId = item.id }
+                    ApplePhotosTimelineMode.entries.forEach { mode ->
+                        val selected = timelineMode == mode
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    if (selected) {
+                                        Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0x669C98B8),
+                                                Color(0x4D6D698D)
+                                            )
+                                        )
+                                    } else {
+                                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                                    }
+                                )
+                                .then(
+                                    if (selected) {
+                                        Modifier.border(
+                                            1.dp,
+                                            Color.White.copy(alpha = 0.34f),
+                                            RoundedCornerShape(20.dp)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .clickable { timelineMode = mode },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mode.label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                                ),
+                                color = if (selected) SeamWarmIvory else SeamMutedGrey,
+                                maxLines = 1
                             )
                         }
                     }
                 }
             }
 
-            // 6. "Recently imported" / Import Card (matching bottom of Page 5 left screenshot)
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .seamPressableCard(
-                            reducedMotion = reducedMotion,
-                            shape = RoundedCornerShape(22.dp),
-                            onClick = { showImportChoiceDialog = true }
-                        )
-                        .background(SeamCharcoal)
-                        .padding(horizontal = 18.dp, vertical = 18.dp)
-                        .testTag("pick_photo_vault_button"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(SeamElevatedSurface)
-                            .border(1.dp, SeamBorderSubtle, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.AddPhotoAlternate,
-                            contentDescription = "Import memory",
-                            tint = SeamSilver,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+            // 8. Apple Photos Collections / Albums Horizontal Strip
+            if (albumCollections.size > 1 && localSearchQuery.isBlank()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Collections",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = SeamWarmIvory
+                            )
+                            if (selectedAlbum != "All") {
+                                Text(
+                                    text = "Show All",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = SeamLavenderAccent,
+                                    modifier = Modifier.clickable { selectedAlbum = "All" }
+                                )
+                            }
+                        }
 
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            albumCollections.forEach { (albumName, count, coverPath) ->
+                                val isAlbumSelected = selectedAlbum.equals(albumName, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 122.dp, height = 104.dp)
+                                        .seamPressableGlassCard(
+                                            reducedMotion = reducedMotion,
+                                            shape = RoundedCornerShape(18.dp),
+                                            accentBorder = if (isAlbumSelected) SeamLavenderAccent else null,
+                                            onClick = {
+                                                selectedAlbum = if (isAlbumSelected) "All" else albumName
+                                            }
+                                        )
+                                ) {
+                                    if (coverPath.isNotBlank() && File(coverPath).exists()) {
+                                        AsyncImage(
+                                            model = File(coverPath),
+                                            contentDescription = albumName,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        Color.Transparent,
+                                                        Color(0xCC090910)
+                                                    )
+                                                )
+                                            )
+                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .padding(10.dp)
+                                    ) {
+                                        Text(
+                                            text = albumName,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = SeamWarmIvory,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "$count",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = SeamSilver
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 9. Empty State OR Apple Photos Mosaic Grid
+            if (visibleMemories.isEmpty()) {
+                item {
                     Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .seamGlassSurface(shape = RoundedCornerShape(24.dp), elevated = true)
+                            .padding(24.dp)
+                            .testTag("gallery_empty_state_card"),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .seamGlassSurface(shape = CircleShape, elevated = true),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.PhotoLibrary,
+                                contentDescription = null,
+                                tint = SeamLavenderAccent,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
                         Text(
-                            text = "Recently imported",
+                            text = if (galleryEntries.isEmpty()) "Your Apple Photos-style Library" else "No matching photos",
                             style = MaterialTheme.typography.titleLarge,
-                            color = SeamWarmIvory
+                            color = SeamWarmIvory,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "${galleryEntries.size} items in private storage · Tap to import photo",
+                            text = if (galleryEntries.isEmpty()) {
+                                "Allow gallery permission above to automatically bring in photos and generate searchable AI keywords, or pick photos manually."
+                            } else {
+                                "Try clearing your keyword filter or selecting another collection."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = SeamMutedGrey
                         )
                     }
+                }
+            } else {
+                groupedSections.forEach { (sectionHeading, sectionItems) ->
+                    stickyHeader(key = "header_$sectionHeading") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xD907070B))
+                                .padding(vertical = 6.dp, horizontal = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = sectionHeading,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = SeamWarmIvory
+                            )
+                            Text(
+                                text = "${sectionItems.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SeamMutedGrey
+                            )
+                        }
+                    }
 
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = SeamMutedGrey
-                    )
+                    when (timelineMode) {
+                        ApplePhotosTimelineMode.MONTHS -> {
+                            val rows = sectionItems.chunked(3)
+                            items(rows, key = { row -> "m3_${sectionHeading}_${row.first().id}" }) { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    rowItems.forEach { item ->
+                                        ApplePhotoMosaicTile(
+                                            entry = item,
+                                            cornerRadiusDp = 10,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { activeDetailMemoryId = item.id }
+                                        )
+                                    }
+                                    repeat(3 - rowItems.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }
+
+                        ApplePhotosTimelineMode.YEARS, ApplePhotosTimelineMode.ALL_PHOTOS -> {
+                            val cols = if (timelineMode == ApplePhotosTimelineMode.YEARS) 4 else 3
+                            val rows = sectionItems.chunked(cols)
+                            items(rows, key = { row -> "grid_${cols}_${sectionHeading}_${row.first().id}" }) { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(2.5.dp)
+                                ) {
+                                    rowItems.forEach { item ->
+                                        ApplePhotoMosaicTile(
+                                            entry = item,
+                                            cornerRadiusDp = if (cols == 4) 6 else 10,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { activeDetailMemoryId = item.id }
+                                        )
+                                    }
+                                    repeat(cols - rowItems.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }
+
+                        ApplePhotosTimelineMode.LIST -> {
+                            items(sectionItems, key = { "list_${it.id}" }) { item ->
+                                MemoryAccessibleListRow(
+                                    entry = item,
+                                    reducedMotion = reducedMotion,
+                                    onClick = { activeDetailMemoryId = item.id }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
+            // Bottom clearance for floating pill glass taskbar + FAB
             item {
-                Spacer(modifier = Modifier.height(64.dp))
+                Spacer(modifier = Modifier.height(92.dp))
             }
         }
     }
 }
 
+/**
+ * Pure Apple Photos square edge-to-edge photo tile with minimal glass badges (heart / AI-indexed dot).
+ */
 @Composable
-private fun MemoryGridTile(
+private fun ApplePhotoMosaicTile(
     entry: VaultEntryEntity,
-    reducedMotion: Boolean,
-    compact: Boolean,
+    cornerRadiusDp: Int,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val fileExists = remember(entry.mediaPath) {
         entry.mediaPath.isNotBlank() && File(entry.mediaPath).exists()
     }
+    val shape = RoundedCornerShape(cornerRadiusDp.dp)
 
-    Column(
+    Box(
         modifier = modifier
-            .seamPressableCard(
-                reducedMotion = reducedMotion,
-                shape = RoundedCornerShape(20.dp),
-                onClick = onClick
-            )
-            .background(SeamCharcoal)
-            .padding(10.dp)
-            .testTag("gallery_card_${entry.id}"),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .aspectRatio(1f)
+            .clip(shape)
+            .background(Color(0xFF141520))
+            .border(0.5.dp, Color.White.copy(alpha = 0.08f), shape)
+            .clickable(onClick = onClick)
+            .testTag("gallery_card_${entry.id}")
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1.1f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(SeamElevatedSurface)
-        ) {
-            if (fileExists) {
-                AsyncImage(
-                    model = File(entry.mediaPath),
-                    contentDescription = entry.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                // Clean mountain/moon geometric silhouette matching Page 5 wireframe aesthetic
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(if (compact) 44.dp else 72.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF565B66).copy(alpha = 0.55f))
-                    )
-                }
-            }
-
-            if (entry.isFavorite) {
+        if (fileExists) {
+            AsyncImage(
+                model = File(entry.mediaPath),
+                contentDescription = entry.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
-                    imageVector = Icons.Filled.Favorite,
-                    contentDescription = "Favorite",
-                    tint = SeamWarmIvory,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .size(16.dp)
+                    imageVector = Icons.Outlined.PhotoLibrary,
+                    contentDescription = null,
+                    tint = SeamMutedGrey.copy(alpha = 0.5f),
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        Text(
-            text = entry.title,
-            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
-            color = SeamWarmIvory,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-        )
+        if (entry.isFavorite) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(5.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x88090A10)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Favorite,
+                    contentDescription = "Favorite",
+                    tint = SeamWarmIvory,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
+        if (entry.isAnalyzed && entry.aiKeywords.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x8A0A0B12))
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = "AI keyword indexed",
+                    tint = SeamLavenderAccent,
+                    modifier = Modifier.size(10.dp)
+                )
+            }
+        }
     }
 }
 
@@ -692,21 +1104,20 @@ private fun MemoryAccessibleListRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .seamPressableCard(
+            .seamPressableGlassCard(
                 reducedMotion = reducedMotion,
                 shape = RoundedCornerShape(18.dp),
                 onClick = onClick
             )
-            .background(SeamCharcoal)
-            .padding(14.dp),
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
             modifier = Modifier
                 .size(64.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(SeamElevatedSurface)
+                .background(Color(0xFF171824))
         ) {
             if (fileExists) {
                 AsyncImage(
@@ -717,17 +1128,28 @@ private fun MemoryAccessibleListRow(
                 )
             }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = entry.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = SeamWarmIvory
+                color = SeamWarmIvory,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "${entry.folderOrAlbum} · ${entry.category} · Local private copy",
+                text = "${entry.folderOrAlbum} · ${entry.category}",
                 style = MaterialTheme.typography.bodySmall,
                 color = SeamMutedGrey
             )
+            if (entry.aiKeywords.isNotBlank()) {
+                Text(
+                    text = entry.aiKeywords,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SeamLavenderAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -738,14 +1160,11 @@ private fun MemoryAccessibleListRow(
 }
 
 /**
- * Page 5 Right Screenshot · Individual Memory Detail:
- * - Full-width media viewer with swipe navigation and a visible back action.
- * - Metadata: date, optional opt-in location, source and storage mode.
- * - Actions: favorite, add to collection, tag, edit caption, share/export, delete.
- * - Dismissible Related Items suggestions.
+ * Full-bleed Apple Photos-style Detail Viewer with floating frosted glass controls and interactive AI keyword/token cloud.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MemoryDetailView(
+private fun ApplePhotosDetailViewer(
     memory: VaultEntryEntity,
     allVisibleMemories: List<VaultEntryEntity>,
     currentIndex: Int,
@@ -755,369 +1174,375 @@ private fun MemoryDetailView(
     onToggleFavorite: () -> Unit,
     onEditMemory: () -> Unit,
     onAnalyzeWithAi: () -> Unit,
+    onTokenClicked: (String) -> Unit,
     onDeleteMemory: () -> Unit,
     onReimportMissingMedia: () -> Unit
 ) {
     BackHandler(onBack = onBack)
 
-    val dateFormat = remember { SimpleDateFormat("EEEE · h:mm a · MMM d", Locale.getDefault()) }
+    val dateFormat = remember { SimpleDateFormat("EEE, MMM d · h:mm a", Locale.getDefault()) }
     val fileExists = remember(memory.mediaPath) {
         memory.mediaPath.isNotBlank() && File(memory.mediaPath).exists()
     }
-    var optInShowLocation by remember { mutableStateOf(false) }
-    var dismissedRelatedIds by remember { mutableStateOf(setOf<Long>()) }
     var horizontalDragDelta by remember { mutableFloatStateOf(0f) }
 
-    val relatedItems = remember(memory, allVisibleMemories, dismissedRelatedIds) {
-        allVisibleMemories.filter { candidate ->
-            candidate.id != memory.id &&
-                !dismissedRelatedIds.contains(candidate.id) &&
-                (candidate.category == memory.category || candidate.folderOrAlbum == memory.folderOrAlbum)
-        }.take(3)
+    val tokens = remember(memory.aiKeywords) {
+        memory.aiKeywords
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
-            .testTag("memory_detail_view"),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        // 1. Top Header with visible Back action & Prev/Next navigation
-        item {
-            SeamTopHeader(
-                statusLabel = "${currentIndex + 1} of ${allVisibleMemories.size}",
-                reducedMotion = reducedMotion,
-                showBackButton = true,
-                onBackClick = onBack,
-                rightActionContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = { if (currentIndex > 0) onNavigateIndex(currentIndex - 1) },
-                            enabled = currentIndex > 0,
-                            modifier = Modifier.minimumInteractiveComponentSize()
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                contentDescription = "Previous Memory",
-                                tint = if (currentIndex > 0) SeamWarmIvory else SeamMutedGrey.copy(alpha = 0.4f)
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                if (currentIndex < allVisibleMemories.lastIndex) {
-                                    onNavigateIndex(currentIndex + 1)
-                                }
-                            },
-                            enabled = currentIndex < allVisibleMemories.lastIndex,
-                            modifier = Modifier.minimumInteractiveComponentSize()
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = "Next Memory",
-                                tint = if (currentIndex < allVisibleMemories.lastIndex) SeamWarmIvory else SeamMutedGrey.copy(alpha = 0.4f)
-                            )
-                        }
-                    }
-                }
-            )
-        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        SeamGlassBackdrop(reducedMotion = reducedMotion)
 
-        // 2. Full-width media viewer with horizontal swipe navigation
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(330.dp)
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(SeamCharcoal)
-                    .border(1.dp, SeamBorderSubtle, RoundedCornerShape(26.dp))
-                    .pointerInput(currentIndex, allVisibleMemories.size) {
-                        detectHorizontalDragGestures(
-                            onDragStart = { horizontalDragDelta = 0f },
-                            onHorizontalDrag = { _, dragAmount ->
-                                horizontalDragDelta += dragAmount
-                            },
-                            onDragEnd = {
-                                if (horizontalDragDelta < -90f && currentIndex < allVisibleMemories.lastIndex) {
-                                    onNavigateIndex(currentIndex + 1)
-                                } else if (horizontalDragDelta > 90f && currentIndex > 0) {
-                                    onNavigateIndex(currentIndex - 1)
-                                }
-                            }
-                        )
-                    }
-            ) {
-                if (fileExists) {
-                    AsyncImage(
-                        model = File(memory.mediaPath),
-                        contentDescription = memory.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(110.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF565B66).copy(alpha = 0.45f))
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            text = "Source media unavailable or linked URI expired",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = SeamMutedGrey
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(onClick = onReimportMissingMedia) {
-                            Text("Relink or Import Copy")
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Title & Date/Storage Mode Metadata
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = memory.title,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = SeamWarmIvory
-                )
-                Text(
-                    text = "${dateFormat.format(Date(memory.createdAtMillis))} · ${if (fileExists) "Local private copy" else "Linked reference"}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SeamMutedGrey
-                )
-                if (memory.primaryContent.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = memory.primaryContent,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = SeamSilver
-                    )
-                }
-            }
-        }
-
-        // 4. "Add to collection / Choose an album or tag" Card (matching Page 5 right screenshot)
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .seamPressableCard(
-                        reducedMotion = reducedMotion,
-                        shape = RoundedCornerShape(22.dp),
-                        onClick = onEditMemory
-                    )
-                    .background(SeamCharcoal)
-                    .padding(horizontal = 18.dp, vertical = 18.dp)
-                    .testTag("memory_add_to_collection_card"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(SeamElevatedSurface)
-                        .border(1.dp, SeamBorderSubtle, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.CollectionsBookmark,
-                        contentDescription = null,
-                        tint = SeamSilver,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Add to collection",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = SeamWarmIvory
-                    )
-                    Text(
-                        text = "Album: ${memory.folderOrAlbum.ifBlank { "Timeline" }} · Tag: ${memory.category}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SeamMutedGrey
-                    )
-                }
-
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = SeamMutedGrey
-                )
-            }
-        }
-
-        // 5. Actions Bar (Favorite, Edit caption, Local AI Tag, Delete)
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onToggleFavorite,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = if (memory.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        contentDescription = "Favorite",
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (memory.isFavorite) "Favorited" else "Favorite")
-                }
-
-                OutlinedButton(
-                    onClick = onEditMemory,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Edit,
-                        contentDescription = "Edit caption",
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Edit")
-                }
-
-                OutlinedButton(
-                    onClick = onAnalyzeWithAi,
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.AutoAwesome,
-                        contentDescription = "Local AI tag",
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onDeleteMemory,
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.DeleteOutline,
-                        contentDescription = "Delete Memory",
-                        tint = SeamErrorCoral,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-
-        // 6. Opt-In Location Metadata Toggle (Page 5: "Location is opt-in and should not be inferred or displayed without permission.")
-        if (memory.websiteOrLocation.isNotBlank()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("memory_detail_view"),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 1. Apple Photos Floating Glass Top Pill Header
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(SeamCharcoal)
-                        .border(1.dp, SeamBorderSubtle, RoundedCornerShape(16.dp))
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .seamGlassSurface(shape = RoundedCornerShape(28.dp), elevated = true)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.minimumInteractiveComponentSize()
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.LocationOn,
-                            contentDescription = null,
-                            tint = SeamSilver,
-                            modifier = Modifier.size(18.dp)
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = "Back to Photos",
+                            tint = SeamWarmIvory
                         )
-                        Column {
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = dateFormat.format(Date(memory.createdAtMillis)),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = SeamWarmIvory,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "${memory.folderOrAlbum.ifBlank { "Recents" }} · ${currentIndex + 1} of ${allVisibleMemories.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SeamMutedGrey,
+                            maxLines = 1
+                        )
+                    }
+
+                    Row {
+                        IconButton(
+                            onClick = { if (currentIndex > 0) onNavigateIndex(currentIndex - 1) },
+                            enabled = currentIndex > 0
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = "Previous Photo",
+                                tint = if (currentIndex > 0) SeamSilver else SeamMutedGrey.copy(alpha = 0.35f)
+                            )
+                        }
+                        IconButton(
+                            onClick = { if (currentIndex < allVisibleMemories.lastIndex) onNavigateIndex(currentIndex + 1) },
+                            enabled = currentIndex < allVisibleMemories.lastIndex
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Next Photo",
+                                tint = if (currentIndex < allVisibleMemories.lastIndex) SeamSilver else SeamMutedGrey.copy(alpha = 0.35f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. Full-bleed Photo Canvas with Swipe Navigation
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(380.dp)
+                        .seamGlassSurface(shape = RoundedCornerShape(24.dp), elevated = true)
+                        .pointerInput(currentIndex, allVisibleMemories.size) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { horizontalDragDelta = 0f },
+                                onHorizontalDrag = { _, dragAmount -> horizontalDragDelta += dragAmount },
+                                onDragEnd = {
+                                    if (horizontalDragDelta < -85f && currentIndex < allVisibleMemories.lastIndex) {
+                                        onNavigateIndex(currentIndex + 1)
+                                    } else if (horizontalDragDelta > 85f && currentIndex > 0) {
+                                        onNavigateIndex(currentIndex - 1)
+                                    }
+                                }
+                            )
+                        }
+                ) {
+                    if (fileExists) {
+                        AsyncImage(
+                            model = File(memory.mediaPath),
+                            contentDescription = memory.title,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF07080D))
+                        )
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
                             Text(
-                                text = if (optInShowLocation) memory.websiteOrLocation else "Location hidden by default (Opt-in)",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = SeamWarmIvory
+                                text = "Photo file unavailable",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = SeamMutedGrey
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            OutlinedButton(onClick = onReimportMissingMedia) {
+                                Text("Relink Photo")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Apple Photos Frosted Glass Bottom Action Pill Bar
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .seamGlassSurface(shape = RoundedCornerShape(28.dp), elevated = true)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onToggleFavorite) {
+                        Icon(
+                            imageVector = if (memory.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Favorite photo",
+                            tint = if (memory.isFavorite) SeamErrorCoral else SeamWarmIvory
+                        )
+                    }
+                    IconButton(onClick = onAnalyzeWithAi) {
+                        Icon(
+                            imageVector = Icons.Outlined.AutoAwesome,
+                            contentDescription = "Refresh AI keywords",
+                            tint = SeamLavenderAccent
+                        )
+                    }
+                    IconButton(onClick = onEditMemory) {
+                        Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = "Edit title, caption & album",
+                            tint = SeamWarmIvory
+                        )
+                    }
+                    IconButton(onClick = onDeleteMemory) {
+                        Icon(
+                            imageVector = Icons.Outlined.DeleteOutline,
+                            contentDescription = "Delete photo",
+                            tint = SeamErrorCoral
+                        )
+                    }
+                }
+            }
+
+            // 4. AI Keywords & Searchable Tokens Glass Panel
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .seamGlassSurface(
+                            shape = RoundedCornerShape(24.dp),
+                            elevated = true,
+                            accentBorder = SeamLavenderAccent.copy(alpha = 0.42f)
+                        )
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = null,
+                                tint = SeamLavenderAccent,
+                                modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "Location metadata is only displayed when explicitly enabled.",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "AI Search Keywords & Tokens",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = SeamWarmIvory,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        SeamGlassBadge(
+                            text = memory.category,
+                            tint = SeamLavenderAccent
+                        )
+                    }
+
+                    if (memory.aiSummary.isNotBlank()) {
+                        Text(
+                            text = memory.aiSummary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = SeamSilver
+                        )
+                    }
+
+                    if (tokens.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            tokens.forEach { token ->
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xB8212132))
+                                        .border(
+                                            1.dp,
+                                            SeamLavenderAccent.copy(alpha = 0.35f),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .clickable { onTokenClicked(token) }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Tag,
+                                        contentDescription = null,
+                                        tint = SeamLavenderAccent,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = token,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = SeamWarmIvory
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = "Tap any token to search matching photos across Seam.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SeamMutedGrey
+                        )
+                    } else {
+                        OutlinedButton(
+                            onClick = onAnalyzeWithAi,
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Generate AI Keywords")
+                        }
+                    }
+
+                    if (memory.ocrExtractedText.isNotBlank()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.FolderOpen,
+                                contentDescription = null,
+                                tint = SeamMutedGrey,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = memory.ocrExtractedText,
+                                style = MaterialTheme.typography.labelSmall,
                                 color = SeamMutedGrey
                             )
                         }
                     }
-                    Switch(
-                        checked = optInShowLocation,
-                        onCheckedChange = { optInShowLocation = it }
+                }
+            }
+
+            // 5. Title, Caption & Collection Card
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .seamPressableGlassCard(
+                            reducedMotion = reducedMotion,
+                            shape = RoundedCornerShape(22.dp),
+                            onClick = onEditMemory
+                        )
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
+                        .testTag("memory_add_to_collection_card"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .seamGlassSurface(shape = CircleShape, elevated = true),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CollectionsBookmark,
+                            contentDescription = null,
+                            tint = SeamSilver,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = memory.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = SeamWarmIvory,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (memory.primaryContent.isNotBlank()) {
+                                memory.primaryContent
+                            } else {
+                                "Album: ${memory.folderOrAlbum.ifBlank { "Recents" }} · Tap to add caption or move album"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SeamMutedGrey,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = SeamMutedGrey
                     )
                 }
             }
-        }
 
-        // 7. Related Items Suggested by Shared Dates / Tags (with Dismiss button per Page 6)
-        if (relatedItems.isNotEmpty()) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "RELATED BY COLLECTION OR LOCAL TAGS",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SeamMutedGrey
-                    )
-                    relatedItems.forEach { related ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .seamPressableCard(
-                                    reducedMotion = reducedMotion,
-                                    shape = RoundedCornerShape(16.dp),
-                                    onClick = {
-                                        val idx = allVisibleMemories.indexOfFirst { it.id == related.id }
-                                        if (idx >= 0) onNavigateIndex(idx)
-                                    }
-                                )
-                                .background(SeamCharcoal)
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = related.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = SeamWarmIvory
-                                )
-                                Text(
-                                    text = "Suggested · Shared tag '${related.category}'",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = SeamMutedGrey
-                                )
-                            }
-                            IconButton(
-                                onClick = { dismissedRelatedIds = dismissedRelatedIds + related.id },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Close,
-                                    contentDescription = "Dismiss suggestion",
-                                    tint = SeamMutedGrey,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(92.dp))
             }
         }
     }

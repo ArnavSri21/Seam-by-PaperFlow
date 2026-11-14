@@ -344,9 +344,10 @@ fun InlineSaveStatusBadge(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF17191D))
-            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(12.dp))
+            .seamGlassSurface(
+                shape = RoundedCornerShape(12.dp),
+                elevated = true
+            )
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -507,7 +508,15 @@ fun GlowingSyncPill(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF17191D))
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xC21D1D2B),
+                        Color(0xB314151F),
+                        Color(0xC21D1C2B)
+                    )
+                )
+            )
             .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {

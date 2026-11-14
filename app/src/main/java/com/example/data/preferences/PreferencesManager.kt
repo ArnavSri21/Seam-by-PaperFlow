@@ -42,7 +42,9 @@ data class UserVaultPreferences(
     val lastSanctuaryInsight: String = "Seam by PaperFlow — Your memories and reflections live quietly in private on-device storage.",
     val signedInGoogleEmail: String = "",
     val signedInGoogleName: String = "",
-    val signedInGoogleUid: String = ""
+    val signedInGoogleUid: String = "",
+    val hasPromptedGalleryPermission: Boolean = false,
+    val isAutoGalleryImportEnabled: Boolean = true
 )
 
 class PreferencesManager(private val context: Context) {
@@ -66,6 +68,8 @@ class PreferencesManager(private val context: Context) {
         val SIGNED_IN_GOOGLE_EMAIL = stringPreferencesKey("signed_in_google_email")
         val SIGNED_IN_GOOGLE_NAME = stringPreferencesKey("signed_in_google_name")
         val SIGNED_IN_GOOGLE_UID = stringPreferencesKey("signed_in_google_uid")
+        val HAS_PROMPTED_GALLERY_PERM = booleanPreferencesKey("has_prompted_gallery_permission")
+        val AUTO_GALLERY_IMPORT_ENABLED = booleanPreferencesKey("auto_gallery_import_enabled")
     }
 
     val preferencesFlow: Flow<UserVaultPreferences> = context.dataStore.data.map { prefs ->
@@ -99,7 +103,9 @@ class PreferencesManager(private val context: Context) {
                 ?: "Seam by PaperFlow — Your memories and reflections live quietly in private on-device storage.",
             signedInGoogleEmail = prefs[Keys.SIGNED_IN_GOOGLE_EMAIL] ?: "",
             signedInGoogleName = prefs[Keys.SIGNED_IN_GOOGLE_NAME] ?: "",
-            signedInGoogleUid = prefs[Keys.SIGNED_IN_GOOGLE_UID] ?: ""
+            signedInGoogleUid = prefs[Keys.SIGNED_IN_GOOGLE_UID] ?: "",
+            hasPromptedGalleryPermission = prefs[Keys.HAS_PROMPTED_GALLERY_PERM] ?: false,
+            isAutoGalleryImportEnabled = prefs[Keys.AUTO_GALLERY_IMPORT_ENABLED] ?: true
         )
     }
 
@@ -174,5 +180,13 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun updateSanctuaryInsight(insight: String) {
         context.dataStore.edit { it[Keys.LAST_SANCTUARY_INSIGHT] = insight }
+    }
+
+    suspend fun markGalleryPermissionPrompted() {
+        context.dataStore.edit { it[Keys.HAS_PROMPTED_GALLERY_PERM] = true }
+    }
+
+    suspend fun setAutoGalleryImportEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AUTO_GALLERY_IMPORT_ENABLED] = enabled }
     }
 }

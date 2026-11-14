@@ -60,9 +60,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.example.data.local.VaultEntryEntity
 import com.example.data.local.VaultItemType
-import com.example.ui.components.AmbientLightBackdrop
+import com.example.ui.components.SeamGlassBackdrop
+import com.example.ui.components.SeamGlassSearchField
 import com.example.ui.components.SeamTopHeader
-import com.example.ui.components.seamPressableCard
+import com.example.ui.components.seamGlassSurface
+import com.example.ui.components.seamPressableGlassCard
 import com.example.ui.theme.SeamBorderSubtle
 import com.example.ui.theme.SeamCharcoal
 import com.example.ui.theme.SeamElevatedSurface
@@ -158,11 +160,9 @@ fun SemanticSearchScreen(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SeamNearBlack)
+        modifier = Modifier.fillMaxSize()
     ) {
-        AmbientLightBackdrop(reducedMotion = reducedMotion)
+        SeamGlassBackdrop(reducedMotion = reducedMotion)
 
         LazyColumn(
             modifier = Modifier
@@ -199,23 +199,12 @@ fun SemanticSearchScreen(
 
             // 3. Debounced Search Field ("that idea about starting again")
             item {
-                OutlinedTextField(
+                SeamGlassSearchField(
                     value = localTypingQuery,
                     onValueChange = { localTypingQuery = it },
-                    placeholder = {
-                        Text(
-                            text = "that idea about starting again",
-                            color = SeamMutedGrey
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = "Search",
-                            tint = SeamMutedGrey
-                        )
-                    },
-                    trailingIcon = {
+                    placeholder = "that idea about starting again",
+                    leadingIcon = Icons.Outlined.Search,
+                    trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (localTypingQuery.isNotEmpty()) {
                                 IconButton(
@@ -254,8 +243,6 @@ fun SemanticSearchScreen(
                             }
                         }
                     },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("semantic_search_input")
@@ -456,9 +443,7 @@ fun SemanticSearchScreen(
                             recentSearches.forEach { past ->
                                 Row(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(SeamCharcoal)
-                                        .border(1.dp, SeamBorderSubtle, RoundedCornerShape(12.dp))
+                                        .seamGlassSurface(shape = RoundedCornerShape(12.dp))
                                         .clickable {
                                             localTypingQuery = past
                                             onQueryChange(past)
@@ -499,9 +484,7 @@ fun SemanticSearchScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(SeamCharcoal)
-                            .border(1.dp, SeamBorderSubtle, RoundedCornerShape(22.dp))
+                            .seamGlassSurface(shape = RoundedCornerShape(22.dp))
                             .padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -531,12 +514,11 @@ fun SemanticSearchScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .seamPressableCard(
+                            .seamPressableGlassCard(
                                 reducedMotion = reducedMotion,
                                 shape = RoundedCornerShape(22.dp),
                                 onClick = { onSelectEntry(item) }
                             )
-                            .background(SeamCharcoal)
                             .padding(horizontal = 18.dp, vertical = 18.dp)
                             .testTag("search_result_${item.id}"),
                         verticalAlignment = Alignment.CenterVertically,
@@ -545,9 +527,7 @@ fun SemanticSearchScreen(
                         Box(
                             modifier = Modifier
                                 .size(44.dp)
-                                .clip(CircleShape)
-                                .background(SeamElevatedSurface)
-                                .border(1.dp, SeamBorderSubtle, CircleShape),
+                                .seamGlassSurface(shape = CircleShape, elevated = true),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -613,12 +593,12 @@ private fun FilterBentoBox(
 ) {
     Column(
         modifier = modifier
-            .seamPressableCard(
+            .seamPressableGlassCard(
                 reducedMotion = reducedMotion,
                 shape = RoundedCornerShape(18.dp),
+                elevated = true,
                 onClick = onClick
             )
-            .background(SeamCharcoal)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
