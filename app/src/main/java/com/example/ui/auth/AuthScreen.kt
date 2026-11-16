@@ -129,9 +129,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-private const val DEFAULT_WEB_CLIENT_ID_FALLBACK =
-    "293444740742-144c8psoeehqh5l8gceap1035fs8uthu.apps.googleusercontent.com"
-
 tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
@@ -143,16 +140,16 @@ private fun resolveAuthScope(context: Context, fallbackScope: CoroutineScope): C
     return activity?.lifecycleScope ?: fallbackScope
 }
 
-private fun resolveWebClientId(context: Context): String {
+private fun resolveWebClientId(context: Context): String? {
     return try {
         val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
         if (resId != 0) {
-            context.getString(resId).ifBlank { DEFAULT_WEB_CLIENT_ID_FALLBACK }
+            context.getString(resId).takeIf { it.isNotBlank() }
         } else {
-            DEFAULT_WEB_CLIENT_ID_FALLBACK
+            null
         }
-    } catch (e: Exception) {
-        DEFAULT_WEB_CLIENT_ID_FALLBACK
+    } catch (_: Exception) {
+        null
     }
 }
 
@@ -180,6 +177,11 @@ fun attemptAutoSignIn(
     }
 
     val clientId = resolveWebClientId(context)
+    if (clientId.isNullOrBlank()) {
+        onUnauthenticated()
+        return
+    }
+
     val googleIdOption = GetGoogleIdOption.Builder()
         .setFilterByAuthorizedAccounts(true)
         .setServerClientId(clientId)
@@ -232,6 +234,14 @@ fun onGoogleSignInClicked(
     onFallbackSystemAccountPicker: (() -> Unit)? = null
 ) {
     val clientId = resolveWebClientId(context)
+    if (clientId.isNullOrBlank()) {
+        if (onFallbackSystemAccountPicker != null) {
+            onFallbackSystemAccountPicker()
+        } else {
+            onAuthError("Google Sign-In configuration missing. Add google-services.json or use email sign-in.")
+        }
+        return
+    }
     val activityContext = context.findActivity() ?: context
     val authScope = resolveAuthScope(context, scope)
     val prefsManager = PreferencesManager(context.applicationContext)
