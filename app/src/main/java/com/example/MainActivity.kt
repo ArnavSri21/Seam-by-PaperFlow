@@ -41,11 +41,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +81,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.core.security.KeystoreVaultCrypto
 import com.example.data.ai.MindfulAiService
 import com.example.data.ai.configureAppCheck
+import com.example.data.calendar.GoogleCalendarSyncHelper
 import com.example.data.cloud.CloudSyncRepository
 import com.example.data.local.IsolatedVaultDatabase
 import com.example.data.local.PaperFlowDatabase
@@ -99,15 +101,19 @@ import androidx.compose.ui.graphics.Color
 import com.example.ui.components.SeamGlassBackdrop
 import com.example.ui.components.rememberEffectiveReducedMotion
 import com.example.ui.components.seamGlassSurface
+import com.example.ui.screens.AssistantMode
 import com.example.ui.screens.GalleryVaultScreen
+import com.example.ui.screens.GeminiAssistantScreen
 import com.example.ui.screens.PasswordsVaultScreen
 import com.example.ui.screens.ReflectionsNotesScreen
 import com.example.ui.screens.SanctuaryScreen
 import com.example.ui.screens.SeamQuickCreateSheet
 import com.example.ui.screens.SemanticSearchScreen
 import com.example.ui.screens.SettingsAndSyncScreen
+import com.example.ui.screens.TasksAndCalendarScreen
 import com.example.ui.screens.VaultCredentialEditorDialog
 import com.example.ui.screens.VaultEntryEditorDialog
+import com.example.ui.screens.VoiceTaskUploadModal
 import com.example.ui.security.BiometricGateOverlay
 import com.example.ui.security.DeviceAutofillPermissionRequestDialog
 import com.example.ui.security.FirstTimeVaultPinSetupScreen
@@ -263,6 +269,9 @@ fun AuthenticatedSanctuaryHost(
     val searchFilter by viewModel.searchFilter.collectAsStateWithLifecycle()
     val backgroundStatus by viewModel.backgroundStatus.collectAsStateWithLifecycle()
     val gallerySyncState by viewModel.gallerySyncState.collectAsStateWithLifecycle()
+    val voiceCaptureState by viewModel.voiceCaptureState.collectAsStateWithLifecycle()
+    val chatState by viewModel.chatState.collectAsStateWithLifecycle()
+    val liveVoiceState by viewModel.liveVoiceState.collectAsStateWithLifecycle()
     val revealedPasswordCountdowns by viewModel.revealedPasswordCountdowns.collectAsStateWithLifecycle()
     val clipboardClearCountdown by viewModel.clipboardClearCountdown.collectAsStateWithLifecycle()
     val bannerMessage by viewModel.uiBannerMessage.collectAsStateWithLifecycle()
@@ -271,6 +280,8 @@ fun AuthenticatedSanctuaryHost(
     val effectiveReducedMotion = rememberEffectiveReducedMotion(preferences.reducedMotionEnabled)
 
     var showQuickCreateSheet by remember { mutableStateOf(false) }
+    var showVoiceUploadModal by remember { mutableStateOf(false) }
+    var assistantInitialMode by remember { mutableStateOf(AssistantMode.CHAT) }
     var showBiometricPromptModal by remember { mutableStateOf(false) }
     var pendingRevealCredentialId by remember { mutableStateOf<Long?>(null) }
     var sanctuaryEditorState by remember { mutableStateOf<Pair<VaultItemType, VaultEntryEntity?>?>(null) }
@@ -390,44 +401,76 @@ fun AuthenticatedSanctuaryHost(
             contentWindowInsets = WindowInsets.safeDrawing,
             containerColor = Color(0xFF07070B),
             floatingActionButton = {
-                if (currentTab != PaperFlowTab.SETTINGS) {
-                    FloatingActionButton(
-                        onClick = {
-                            when (currentTab) {
-                                PaperFlowTab.GALLERY -> {
-                                    quickPhotoPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                }
-                                PaperFlowTab.NOTES -> {
-                                    sanctuaryEditorState = VaultItemType.NOTE to null
-                                }
-                                PaperFlowTab.PASSWORDS -> {
-                                    credentialEditorState = true to null
-                                }
-                                else -> showQuickCreateSheet = true
-                            }
-                        },
-                        containerColor = Color(0xE82A293B),
-                        contentColor = SeamWarmIvory,
-                        shape = RoundedCornerShape(22.dp),
-                        modifier = Modifier
-                            .border(
-                                width = 1.dp,
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = 0.48f),
-                                        SeamLavenderAccent.copy(alpha = 0.30f)
-                                    )
-                                ),
-                                shape = RoundedCornerShape(22.dp)
-                            )
-                            .testTag("main_fab_add")
+                if (currentTab != PaperFlowTab.SETTINGS && currentTab != PaperFlowTab.ASSISTANT) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "One-tap capture: Note, Import memory, Add credential"
-                        )
+                        FloatingActionButton(
+                            onClick = { showVoiceUploadModal = true },
+                            containerColor = Color(0xE8342F4B),
+                            contentColor = SeamWarmIvory,
+                            shape = RoundedCornerShape(22.dp),
+                            modifier = Modifier
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            SeamLavenderAccent.copy(alpha = 0.72f),
+                                            Color.White.copy(alpha = 0.36f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(22.dp)
+                                )
+                                .testTag("main_fab_voice")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Voice upload task or schedule to Google Calendar"
+                            )
+                        }
+
+                        FloatingActionButton(
+                            onClick = {
+                                when (currentTab) {
+                                    PaperFlowTab.GALLERY -> {
+                                        quickPhotoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }
+                                    PaperFlowTab.NOTES -> {
+                                        sanctuaryEditorState = VaultItemType.NOTE to null
+                                    }
+                                    PaperFlowTab.PASSWORDS -> {
+                                        credentialEditorState = true to null
+                                    }
+                                    PaperFlowTab.TASKS -> {
+                                        showVoiceUploadModal = true
+                                    }
+                                    else -> showQuickCreateSheet = true
+                                }
+                            },
+                            containerColor = Color(0xE82A293B),
+                            contentColor = SeamWarmIvory,
+                            shape = RoundedCornerShape(22.dp),
+                            modifier = Modifier
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.48f),
+                                            SeamLavenderAccent.copy(alpha = 0.30f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(22.dp)
+                                )
+                                .testTag("main_fab_add")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "One-tap capture: Voice, Note, Import memory, Add credential"
+                            )
+                        }
                     }
                 }
             },
@@ -475,6 +518,34 @@ fun AuthenticatedSanctuaryHost(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val fallbackCalEntry = voiceCaptureState.lastSummary?.calendarFallbackEntry
+                                    if (fallbackCalEntry != null && msg.contains("Export", ignoreCase = true)) {
+                                        Text(
+                                            text = "Calendar",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = SeamLavenderAccent,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .clickable {
+                                                    val start = fallbackCalEntry.taskDueAtMillis() ?: System.currentTimeMillis()
+                                                    runCatching {
+                                                        context.startActivity(
+                                                            GoogleCalendarSyncHelper.buildCreateCalendarEventIntent(
+                                                                title = fallbackCalEntry.title,
+                                                                description = fallbackCalEntry.primaryContent,
+                                                                startMillis = start,
+                                                                durationMinutes = fallbackCalEntry.taskDurationMinutes(),
+                                                                location = fallbackCalEntry.websiteOrLocation
+                                                            )
+                                                        )
+                                                    }
+                                                    viewModel.dismissBannerMessage()
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                                .testTag("banner_calendar_export_button")
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
                                     if (canUndoDelete && msg.startsWith("Removed")) {
                                         Text(
                                             text = "Undo",
@@ -523,7 +594,17 @@ fun AuthenticatedSanctuaryHost(
                                         isolatedVaultCount = vaultCredentials.size,
                                         preferences = preferences,
                                         backgroundStatus = backgroundStatus,
+                                        isVoiceProcessing = voiceCaptureState.isProcessing,
                                         onNavigateToTab = { viewModel.selectTab(it) },
+                                        onOpenVoiceCapture = { showVoiceUploadModal = true },
+                                        onOpenAiChat = {
+                                            assistantInitialMode = AssistantMode.CHAT
+                                            viewModel.selectTab(PaperFlowTab.ASSISTANT)
+                                        },
+                                        onOpenLiveVoice = {
+                                            assistantInitialMode = AssistantMode.LIVE
+                                            viewModel.selectTab(PaperFlowTab.ASSISTANT)
+                                        },
                                         onOpenNewEntryDialog = { type ->
                                             if (type == VaultItemType.PASSWORD) {
                                                 viewModel.selectTab(PaperFlowTab.PASSWORDS)
@@ -543,6 +624,60 @@ fun AuthenticatedSanctuaryHost(
                                             viewModel.lockVaultNow()
                                             viewModel.selectTab(PaperFlowTab.PASSWORDS)
                                         }
+                                    )
+                                }
+
+                                PaperFlowTab.TASKS -> {
+                                    TasksAndCalendarScreen(
+                                        taskEntries = allEntries.filter { it.itemType == VaultItemType.TASK.name },
+                                        voiceCaptureState = voiceCaptureState,
+                                        reducedMotion = preferences.reducedMotionEnabled,
+                                        onRequestVoiceCapture = { showVoiceUploadModal = true },
+                                        onCreateManualTask = { title, isoDate, time24h, notes, priority, syncCal ->
+                                            viewModel.createManualTaskAndSync(title, isoDate, time24h, notes, priority, syncCal)
+                                        },
+                                        onToggleTaskCompleted = { viewModel.toggleTaskCompleted(it) },
+                                        onSyncTaskToGoogleCalendar = { task ->
+                                            viewModel.syncTaskToGoogleCalendarNow(task) { fallbackTask ->
+                                                val start = fallbackTask.taskDueAtMillis() ?: (System.currentTimeMillis() + 3_600_000L)
+                                                runCatching {
+                                                    context.startActivity(
+                                                        GoogleCalendarSyncHelper.buildCreateCalendarEventIntent(
+                                                            title = fallbackTask.title,
+                                                            description = fallbackTask.primaryContent,
+                                                            startMillis = start,
+                                                            durationMinutes = fallbackTask.taskDurationMinutes(),
+                                                            location = fallbackTask.websiteOrLocation
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onDeleteTask = { viewModel.deleteEntry(it) },
+                                        onOpenAssistantLive = {
+                                            assistantInitialMode = AssistantMode.LIVE
+                                            viewModel.selectTab(PaperFlowTab.ASSISTANT)
+                                        },
+                                        onOpenSettings = { viewModel.selectTab(PaperFlowTab.SETTINGS) }
+                                    )
+                                }
+
+                                PaperFlowTab.ASSISTANT -> {
+                                    GeminiAssistantScreen(
+                                        initialMode = assistantInitialMode,
+                                        chatState = chatState,
+                                        liveState = liveVoiceState,
+                                        reducedMotion = preferences.reducedMotionEnabled,
+                                        onSelectChatModel = { viewModel.selectChatModel(it) },
+                                        onSelectChatRole = { viewModel.selectChatRole(it) },
+                                        onSendChatMessage = { viewModel.sendChatMessage(it) },
+                                        onClearChat = { viewModel.clearChatHistory() },
+                                        onRequestVoiceModalForChat = { showVoiceUploadModal = true },
+                                        onStartLiveSession = { viewModel.startLiveVoiceSession() },
+                                        onStopLiveSession = { viewModel.stopLiveVoiceSession() },
+                                        onSendLiveText = { viewModel.sendLivePromptText(it) },
+                                        onBackToHome = { viewModel.selectTab(PaperFlowTab.SANCTUARY) },
+                                        onOpenSettings = { viewModel.selectTab(PaperFlowTab.SETTINGS) }
                                     )
                                 }
 
@@ -769,7 +904,7 @@ fun AuthenticatedSanctuaryHost(
             }
         }
 
-        // Minimalist Add Sheet ("Photos", "Note", "Password")
+        // Minimalist Add Sheet ("Voice", "Photos", "Note", "Password")
         if (showQuickCreateSheet) {
             SeamQuickCreateSheet(
                 reducedMotion = preferences.reducedMotionEnabled,
@@ -784,6 +919,23 @@ fun AuthenticatedSanctuaryHost(
                 },
                 onAddCredential = {
                     credentialEditorState = true to null
+                },
+                onVoiceTask = {
+                    showVoiceUploadModal = true
+                }
+            )
+        }
+
+        if (showVoiceUploadModal) {
+            VoiceTaskUploadModal(
+                isProcessing = voiceCaptureState.isProcessing,
+                onDismiss = { showVoiceUploadModal = false },
+                onSubmitTranscript = { spokenText ->
+                    viewModel.processSpokenVoiceUpload(spokenText)
+                    showVoiceUploadModal = false
+                    if (currentTab == PaperFlowTab.SANCTUARY) {
+                        viewModel.selectTab(PaperFlowTab.TASKS)
+                    }
                 }
             )
         }
@@ -863,10 +1015,10 @@ private fun SeamFloatingPillTaskbar(
     val navItems = remember {
         listOf(
             PillNavItem(PaperFlowTab.SANCTUARY, "Home", Icons.Outlined.Home, "nav_sanctuary"),
+            PillNavItem(PaperFlowTab.TASKS, "Tasks", Icons.Outlined.EventAvailable, "nav_tasks"),
             PillNavItem(PaperFlowTab.GALLERY, "Memories", Icons.Outlined.PhotoLibrary, "nav_gallery"),
             PillNavItem(PaperFlowTab.NOTES, "Notes", Icons.Outlined.Edit, "nav_notes"),
-            PillNavItem(PaperFlowTab.PASSWORDS, "Vault", Icons.Outlined.Lock, "nav_passwords"),
-            PillNavItem(PaperFlowTab.SEARCH, "Search", Icons.Outlined.Search, "nav_search")
+            PillNavItem(PaperFlowTab.PASSWORDS, "Vault", Icons.Outlined.Lock, "nav_passwords")
         )
     }
 

@@ -7,9 +7,16 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.PowerManager
 import com.example.core.security.KeystoreVaultCrypto
+import com.example.data.ai.AssistantToolExecutor
+import com.example.data.ai.ExtractedActionItem
+import com.example.data.ai.ExtractedItemKind
+import com.example.data.ai.GeminiAssistantService
+import com.example.data.ai.GeminiChatModel
 import com.example.data.ai.LocalAiAnalyzer
 import com.example.data.ai.MindfulAiService
 import com.example.data.ai.SemanticSearchExpansion
+import com.example.data.calendar.CalendarSyncResult
+import com.example.data.calendar.GoogleCalendarSyncHelper
 import com.example.data.cloud.CloudSyncRepository
 import com.example.data.local.DevicePhotoAsset
 import com.example.data.local.IsolatedVaultDao
@@ -23,6 +30,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -52,9 +62,17 @@ data class AutoImportResult(
     val aiErrorMessage: String? = null
 )
 
+data class VoiceOrganizationSummary(
+    val rawTranscript: String,
+    val createdEntries: List<VaultEntryEntity>,
+    val syncedCalendarCount: Int,
+    val summaryMessage: String,
+    val calendarFallbackEntry: VaultEntryEntity? = null
+)
+
 /**
  * Coordinates Seam by PaperFlow's strict two-boundary architecture:
- * 1. Sanctuary Database (`VaultDao` + `PrivatePhoneStorageManager`): Notes/Reflections & Gallery Memories.
+ * 1. Sanctuary Database (`VaultDao` + `PrivatePhoneStorageManager`): Notes/Reflections, Tasks/Schedules, & Gallery Memories.
  * 2. Isolated Password Vault Database (`IsolatedVaultDao` + `KeystoreVaultCrypto`): Android Keystore AES-GCM
  *    encrypted credentials that NEVER touch AI, cloud sync, or semantic search indexes.
  */
@@ -66,7 +84,8 @@ class PaperFlowRepository(
     private val storageManager: PrivatePhoneStorageManager,
     private val cloudSyncRepository: CloudSyncRepository,
     private val aiService: MindfulAiService,
-    private val localAiAnalyzer: LocalAiAnalyzer = LocalAiAnalyzer()
+    private val localAiAnalyzer: LocalAiAnalyzer = LocalAiAnalyzer(),
+    val assistantService: GeminiAssistantService = GeminiAssistantService()
 ) {
 
     // Sanctuary stream: Notes & Gallery ONLY (Passwords live in IsolatedVaultDao)
@@ -757,5 +776,292 @@ class PaperFlowRepository(
             }
         }
         storageManager.writeAutoSnapshotJson(userId.ifBlank { "local_keeper" }, array.toString())
+    }
+
+    suspend fun saveTaskAndMaybeSyncCalendar(
+        userId: String,
+        title: String,
+        dueIsoDate: String,
+        dueTime24h: String,
+        durationMinutes: Int = 60,
+        notes: String = "",
+        location: String = "",
+        category: String = "Schedule",
+        folderOrBucket: String = "Schedule",
+        priorityHigh: Boolean = false,
+        syncToCalendar: Boolean = true,
+        explicitDueMillis: Long? = null
+    ): Pair<VaultEntryEntity, CalendarSyncResult?> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val resolvedDueMillis = explicitDueMillis ?: assistantService.resolveTimestampMillis(dueIsoDate, dueTime24h, now)
+        val scheduleLabel = formatScheduleDisplay(resolvedDueMillis, location)
+
+        var syncResult: CalendarSyncResult? = null
+        if (syncToCalendar && resolvedDueMillis != null) {
+            syncResult = GoogleCalendarSyncHelper.insertEventIntoGoogleCalendar(
+                context = context,
+                title = title,
+                description = notes,
+                startMillis = resolvedDueMillis,
+                durationMinutes = durationMinutes,
+                location = location
+            )
+        }
+
+        val encodedMeta = VaultEntryEntity.encodeTaskMeta(
+            dueAtMillis = resolvedDueMillis,
+            durationMinutes = durationMinutes,
+            calendarEventId = syncResult?.eventId,
+            syncedToCalendar = syncResult?.isSynced == true,
+            calendarName = syncResult?.calendarDisplayName.orEmpty()
+        )
+
+        val keywordTokens = listOfNotNull(
+            "task",
+            "todo",
+            category.lowercase(Locale.US),
+            folderOrBucket.lowercase(Locale.US),
+            if (syncResult?.isSynced == true) "google calendar" else null,
+            if (resolvedDueMillis != null) SimpleDateFormat("MMM d yyyy", Locale.US).format(Date(resolvedDueMillis)).lowercase(Locale.US) else null
+        ).distinct().joinToString(", ")
+
+        val entity = VaultEntryEntity(
+            cloudId = "seam_${UUID.randomUUID().toString().replace("-", "_")}",
+            userId = userId,
+            itemType = VaultItemType.TASK.name,
+            title = title.trim().ifBlank { "Task" },
+            primaryContent = notes.trim(),
+            secretValue = encodedMeta,
+            websiteOrLocation = scheduleLabel,
+            folderOrAlbum = folderOrBucket.ifBlank { "Schedule" },
+            category = category.ifBlank { "Task" },
+            moodTag = "Pending",
+            aiSummary = if (syncResult?.isSynced == true) {
+                "Scheduled for $scheduleLabel • Synced to ${syncResult.calendarDisplayName}"
+            } else {
+                scheduleLabel
+            },
+            aiKeywords = keywordTokens,
+            isFavorite = priorityHigh,
+            isAnalyzed = true,
+            createdAtMillis = now,
+            updatedAtMillis = now
+        )
+
+        val insertedId = vaultDao.insertEntry(entity)
+        val persisted = entity.copy(id = insertedId)
+        writeLocalAutoSnapshot(userId)
+        persisted to syncResult
+    }
+
+    suspend fun toggleTaskCompleted(entry: VaultEntryEntity): VaultEntryEntity = withContext(Dispatchers.IO) {
+        val nextStatus = if (entry.isTaskCompleted) "Pending" else "Done"
+        val updated = entry.copy(
+            moodTag = nextStatus,
+            isCloudSynced = false,
+            updatedAtMillis = System.currentTimeMillis()
+        )
+        vaultDao.updateEntry(updated)
+        writeLocalAutoSnapshot(entry.userId)
+        updated
+    }
+
+    suspend fun syncExistingTaskToCalendar(entry: VaultEntryEntity): Pair<VaultEntryEntity, CalendarSyncResult> =
+        withContext(Dispatchers.IO) {
+            val startMillis = entry.taskDueAtMillis() ?: (System.currentTimeMillis() + 3_600_000L)
+            val result = GoogleCalendarSyncHelper.insertEventIntoGoogleCalendar(
+                context = context,
+                title = entry.title,
+                description = entry.primaryContent,
+                startMillis = startMillis,
+                durationMinutes = entry.taskDurationMinutes(),
+                location = entry.websiteOrLocation
+            )
+            if (result.isSynced) {
+                val updatedMeta = VaultEntryEntity.encodeTaskMeta(
+                    dueAtMillis = startMillis,
+                    durationMinutes = entry.taskDurationMinutes(),
+                    calendarEventId = result.eventId,
+                    syncedToCalendar = true,
+                    calendarName = result.calendarDisplayName
+                )
+                val updated = entry.copy(
+                    secretValue = updatedMeta,
+                    aiSummary = "Synced to ${result.calendarDisplayName}",
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+                vaultDao.updateEntry(updated)
+                writeLocalAutoSnapshot(entry.userId)
+                updated to result
+            } else {
+                entry to result
+            }
+        }
+
+    suspend fun processVoiceOrTextAndOrganize(
+        userId: String,
+        spokenText: String,
+        preferredModel: GeminiChatModel = GeminiChatModel.HYDROGEN
+    ): VoiceOrganizationSummary = withContext(Dispatchers.IO) {
+        val outcome = assistantService.parseVoiceInputToActionItems(
+            spokenText = spokenText,
+            nowMillis = System.currentTimeMillis(),
+            preferredModel = preferredModel
+        )
+
+        val created = mutableListOf<VaultEntryEntity>()
+        var syncedCount = 0
+        var fallbackEntry: VaultEntryEntity? = null
+
+        for (item: ExtractedActionItem in outcome.items) {
+            if (item.kind == ExtractedItemKind.NOTE && item.dueAtMillis == null && !item.syncToCalendar) {
+                val noteId = saveSanctuaryEntry(
+                    userId = userId,
+                    existingId = null,
+                    itemType = VaultItemType.NOTE,
+                    title = item.title,
+                    primaryContent = item.details,
+                    secondaryMetadata = "Voice Note",
+                    websiteOrLocation = item.location,
+                    folderOrAlbum = item.folderOrBucket.ifBlank { "Voice Notes" },
+                    mediaPath = "",
+                    category = item.category.ifBlank { "Notes" },
+                    moodTag = "Mindful",
+                    isFavorite = item.priorityHigh
+                )
+                vaultDao.getEntryById(noteId)?.let { created.add(it) }
+            } else {
+                val (savedTask, calResult) = saveTaskAndMaybeSyncCalendar(
+                    userId = userId,
+                    title = item.title,
+                    dueIsoDate = item.dueIsoDate,
+                    dueTime24h = item.dueTime24h,
+                    durationMinutes = item.durationMinutes,
+                    notes = item.details,
+                    location = item.location,
+                    category = item.category,
+                    folderOrBucket = item.folderOrBucket,
+                    priorityHigh = item.priorityHigh,
+                    syncToCalendar = item.syncToCalendar || item.dueAtMillis != null,
+                    explicitDueMillis = item.dueAtMillis
+                )
+                created.add(savedTask)
+                if (calResult?.isSynced == true) {
+                    syncedCount++
+                } else if (fallbackEntry == null && (item.syncToCalendar || item.dueAtMillis != null)) {
+                    fallbackEntry = savedTask
+                }
+            }
+        }
+
+        val message = when {
+            created.isEmpty() -> "Couldn't extract an item from that — try again."
+            syncedCount > 0 ->
+                "Added ${created.size} item${if (created.size > 1) "s" else ""} to To-Do & synced $syncedCount to Google Calendar."
+            fallbackEntry != null ->
+                "Added '${fallbackEntry.title}' (${fallbackEntry.websiteOrLocation}) to To-Do. Tap Calendar to export to Google Calendar."
+            else -> outcome.assistantSummary
+        }
+
+        VoiceOrganizationSummary(
+            rawTranscript = outcome.rawInput,
+            createdEntries = created,
+            syncedCalendarCount = syncedCount,
+            summaryMessage = message,
+            calendarFallbackEntry = fallbackEntry
+        )
+    }
+
+    fun buildAssistantToolExecutor(userId: String): AssistantToolExecutor {
+        return object : AssistantToolExecutor {
+            override suspend fun onCreateTaskOrCalendarEvent(
+                title: String,
+                dueIsoDate: String,
+                dueTime24h: String,
+                durationMinutes: Int,
+                notes: String,
+                location: String,
+                category: String,
+                priorityHigh: Boolean,
+                syncToCalendar: Boolean
+            ): String {
+                val (task, syncRes) = saveTaskAndMaybeSyncCalendar(
+                    userId = userId,
+                    title = title,
+                    dueIsoDate = dueIsoDate,
+                    dueTime24h = dueTime24h,
+                    durationMinutes = durationMinutes,
+                    notes = notes,
+                    location = location,
+                    category = category,
+                    folderOrBucket = "Schedule",
+                    priorityHigh = priorityHigh,
+                    syncToCalendar = syncToCalendar
+                )
+                return if (syncRes?.isSynced == true) {
+                    "Added '${task.title}' (${task.websiteOrLocation}) to To-Do and Google Calendar (${syncRes.calendarDisplayName})."
+                } else {
+                    "Added '${task.title}' (${task.websiteOrLocation}) to To-Do list."
+                }
+            }
+
+            override suspend fun onCreateOrganizedNote(
+                title: String,
+                content: String,
+                folder: String,
+                category: String
+            ): String {
+                saveSanctuaryEntry(
+                    userId = userId,
+                    existingId = null,
+                    itemType = VaultItemType.NOTE,
+                    title = title,
+                    primaryContent = content,
+                    secondaryMetadata = "Markdown",
+                    websiteOrLocation = "",
+                    folderOrAlbum = folder,
+                    mediaPath = "",
+                    category = category,
+                    moodTag = "Mindful",
+                    isFavorite = false
+                )
+                return "Saved organized note '$title' in '$folder'."
+            }
+
+            override suspend fun onListUpcomingTasks(): String {
+                val tasks = vaultDao.getEntriesOnce()
+                    .filter { it.itemType == VaultItemType.TASK.name }
+                    .take(15)
+                if (tasks.isEmpty()) return "No tasks scheduled yet."
+                return tasks.joinToString("\n") { t ->
+                    val status = if (t.isTaskCompleted) "Done" else "Pending"
+                    "- [${status}] ${t.title} (${t.websiteOrLocation})"
+                }
+            }
+        }
+    }
+
+    suspend fun connectLiveVoice(
+        role: com.example.data.ai.GeminiAssistantRole,
+        userId: String,
+        onTranscriptUpdate: (isUser: Boolean, text: String) -> Unit,
+        onLiveToolEvent: (String) -> Unit,
+        onSessionEnded: (String?) -> Unit
+    ) = assistantService.connectAndStartLiveAudio(
+        context = context,
+        role = role,
+        toolExecutor = buildAssistantToolExecutor(userId),
+        onTranscriptUpdate = onTranscriptUpdate,
+        onLiveToolEvent = onLiveToolEvent,
+        onSessionEnded = onSessionEnded
+    )
+
+    private fun formatScheduleDisplay(dueMillis: Long?, location: String): String {
+        val dateText = if (dueMillis != null && dueMillis > 0L) {
+            SimpleDateFormat("EEE, MMM d · h:mm a", Locale.getDefault()).format(Date(dueMillis))
+        } else {
+            "To-Do · Any time"
+        }
+        return if (location.isNotBlank()) "$dateText · $location" else dateText
     }
 }

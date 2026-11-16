@@ -1050,7 +1050,8 @@ fun SeamQuickCreateSheet(
     onDismiss: () -> Unit,
     onCreateNote: () -> Unit,
     onImportMemory: () -> Unit,
-    onAddCredential: () -> Unit
+    onAddCredential: () -> Unit,
+    onVoiceTask: () -> Unit = {}
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1075,6 +1076,17 @@ fun SeamQuickCreateSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                MinimalAddTile(
+                    icon = Icons.Outlined.AutoAwesome,
+                    label = "Voice",
+                    reducedMotion = reducedMotion,
+                    testTag = "sheet_voice_task",
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        onDismiss()
+                        onVoiceTask()
+                    }
+                )
                 MinimalAddTile(
                     icon = Icons.Outlined.PhotoLibrary,
                     label = "Photos",

@@ -20,8 +20,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.EventAvailable
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
@@ -84,7 +88,11 @@ fun SanctuaryScreen(
     isolatedVaultCount: Int,
     preferences: UserVaultPreferences,
     backgroundStatus: BackgroundStatusState,
+    isVoiceProcessing: Boolean = false,
     onNavigateToTab: (PaperFlowTab) -> Unit,
+    onOpenVoiceCapture: () -> Unit = {},
+    onOpenAiChat: () -> Unit = {},
+    onOpenLiveVoice: () -> Unit = {},
     onOpenNewEntryDialog: (VaultItemType) -> Unit,
     onSelectEntry: (VaultEntryEntity) -> Unit,
     onToggleFavorite: (VaultEntryEntity) -> Unit,
@@ -93,6 +101,7 @@ fun SanctuaryScreen(
 ) {
     val notesCount = entries.count { it.itemType == VaultItemType.NOTE.name }
     val galleryCount = entries.count { it.itemType == VaultItemType.GALLERY.name }
+    val pendingTasksCount = entries.count { it.itemType == VaultItemType.TASK.name && !it.isTaskCompleted }
     val dateFormat = SimpleDateFormat("MMM d · h:mm a", Locale.getDefault())
 
     Box(
@@ -119,12 +128,29 @@ fun SanctuaryScreen(
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = SeamWarmIvory
                     )
-                    SeamTopHeader(
-                        statusLabel = "",
-                        isStatusActive = false,
-                        reducedMotion = preferences.reducedMotionEnabled,
-                        onSettingsClick = { onNavigateToTab(PaperFlowTab.SETTINGS) }
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(
+                            onClick = { onNavigateToTab(PaperFlowTab.SEARCH) },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("nav_search")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = "Search",
+                                tint = SeamSilver
+                            )
+                        }
+                        SeamTopHeader(
+                            statusLabel = "",
+                            isStatusActive = false,
+                            reducedMotion = preferences.reducedMotionEnabled,
+                            onSettingsClick = { onNavigateToTab(PaperFlowTab.SETTINGS) }
+                        )
+                    }
                 }
             }
 
@@ -137,19 +163,100 @@ fun SanctuaryScreen(
                         color = SeamWarmIvory
                     )
                     Text(
-                        text = "Photos, notes & passwords in one quiet place.",
+                        text = "Speak a task, organize thoughts, or save memories.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = SeamMutedGrey
                     )
                 }
             }
 
-            // 3. Minimal Global Search Bar
+            // 3. 1-Tap Voice Upload & Gemini Live / Chat Strip
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                            .seamPressableGlassCard(
+                                reducedMotion = preferences.reducedMotionEnabled,
+                                shape = RoundedCornerShape(26.dp),
+                                elevated = true,
+                                accentBorder = SeamLavenderAccent.copy(alpha = 0.52f),
+                                onClick = onOpenVoiceCapture
+                            )
+                            .padding(horizontal = 16.dp)
+                            .testTag("home_voice_upload_button"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Voice upload task or schedule",
+                            tint = SeamLavenderAccent,
+                            modifier = Modifier.size(21.dp)
+                        )
+                        Text(
+                            text = if (isVoiceProcessing) "Organizing voice…" else "Speak task or schedule",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = SeamWarmIvory,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .seamPressableGlassCard(
+                                reducedMotion = preferences.reducedMotionEnabled,
+                                shape = RoundedCornerShape(22.dp),
+                                elevated = true,
+                                onClick = onOpenAiChat
+                            )
+                            .testTag("home_ai_chat_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ChatBubbleOutline,
+                            contentDescription = "Gemini Chat",
+                            tint = SeamSilver,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .seamPressableGlassCard(
+                                reducedMotion = preferences.reducedMotionEnabled,
+                                shape = RoundedCornerShape(22.dp),
+                                elevated = true,
+                                accentBorder = SeamLavenderAccent.copy(alpha = 0.4f),
+                                onClick = onOpenLiveVoice
+                            )
+                            .testTag("home_live_ai_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.GraphicEq,
+                            contentDescription = "Gemini Live Voice",
+                            tint = SeamLavenderAccent,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+                }
+            }
+
+            // 4. Minimal Global Search Bar
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(50.dp)
                         .seamPressableGlassCard(
                             reducedMotion = preferences.reducedMotionEnabled,
                             shape = RoundedCornerShape(24.dp),
@@ -172,7 +279,7 @@ fun SanctuaryScreen(
                             modifier = Modifier.size(19.dp)
                         )
                         Text(
-                            text = "Search photos, notes or tags",
+                            text = "Search tasks, photos, notes or tags",
                             style = MaterialTheme.typography.bodyLarge,
                             color = SeamMutedGrey,
                             maxLines = 1,
@@ -226,9 +333,18 @@ fun SanctuaryScreen(
                 }
             }
 
-            // 5. Three Clean Core Space Cards
+            // 5. Core Space Cards
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeFeatureRowCard(
+                        icon = Icons.Outlined.EventAvailable,
+                        title = "Tasks & Calendar",
+                        subtitle = if (pendingTasksCount > 0) "$pendingTasksCount upcoming · Synced with Calendar" else "Voice tasks & Google Calendar",
+                        reducedMotion = preferences.reducedMotionEnabled,
+                        testTag = "feature_card_tasks",
+                        onClick = { onNavigateToTab(PaperFlowTab.TASKS) }
+                    )
+
                     HomeFeatureRowCard(
                         icon = Icons.Outlined.PhotoLibrary,
                         title = "Memories",
@@ -292,13 +408,16 @@ fun SanctuaryScreen(
 
                 items(entries.take(5), key = { it.id }) { entry ->
                     val isGallery = entry.itemType == VaultItemType.GALLERY.name
+                    val isTask = entry.itemType == VaultItemType.TASK.name
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .seamPressableGlassCard(
                                 reducedMotion = preferences.reducedMotionEnabled,
                                 shape = RoundedCornerShape(20.dp),
-                                onClick = { onSelectEntry(entry) }
+                                onClick = {
+                                    if (isTask) onNavigateToTab(PaperFlowTab.TASKS) else onSelectEntry(entry)
+                                }
                             )
                             .padding(horizontal = 16.dp, vertical = 14.dp)
                             .testTag("sanctuary_entry_${entry.id}"),
@@ -312,8 +431,16 @@ fun SanctuaryScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = if (isGallery) Icons.Outlined.PhotoLibrary else Icons.Outlined.Description,
-                                contentDescription = if (isGallery) "Memory" else "Note",
+                                imageVector = when {
+                                    isTask -> Icons.Outlined.EventAvailable
+                                    isGallery -> Icons.Outlined.PhotoLibrary
+                                    else -> Icons.Outlined.Description
+                                },
+                                contentDescription = when {
+                                    isTask -> "Task"
+                                    isGallery -> "Memory"
+                                    else -> "Note"
+                                },
                                 tint = SeamSilver,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -331,9 +458,15 @@ fun SanctuaryScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "${if (isGallery) "Memory" else "Note"} · ${dateFormat.format(Date(entry.updatedAtMillis))}",
+                                text = when {
+                                    isTask -> entry.websiteOrLocation.ifBlank { "Task" }
+                                    isGallery -> "Memory · ${dateFormat.format(Date(entry.updatedAtMillis))}"
+                                    else -> "Note · ${dateFormat.format(Date(entry.updatedAtMillis))}"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = SeamMutedGrey
+                                color = SeamMutedGrey,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 

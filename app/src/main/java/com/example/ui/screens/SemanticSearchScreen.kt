@@ -291,6 +291,7 @@ fun SemanticSearchScreen(
                             null -> "All content"
                             VaultItemType.NOTE -> "Notes"
                             VaultItemType.GALLERY -> "Memories"
+                            VaultItemType.TASK -> "Tasks"
                             VaultItemType.PASSWORD -> "All content"
                         }
                         FilterBentoBox(
@@ -304,6 +305,7 @@ fun SemanticSearchScreen(
                                 val nextType = when (searchFilter.selectedType) {
                                     null -> VaultItemType.NOTE
                                     VaultItemType.NOTE -> VaultItemType.GALLERY
+                                    VaultItemType.GALLERY -> VaultItemType.TASK
                                     else -> null
                                 }
                                 onSelectTypeFilter(nextType)

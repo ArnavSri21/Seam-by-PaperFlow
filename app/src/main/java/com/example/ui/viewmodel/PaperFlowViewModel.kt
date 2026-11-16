@@ -5,6 +5,10 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.ai.GeminiAssistantRole
+import com.example.data.ai.GeminiChatModel
+import com.example.data.ai.LiveTranscriptLine
+import com.example.data.ai.LiveVoiceController
 import com.example.data.local.DeviceGalleryAutoImporter
 import com.example.data.local.GalleryPermissionStatus
 import com.example.data.local.VaultCredentialEntity
@@ -16,6 +20,8 @@ import com.example.data.preferences.ThemeModePreference
 import com.example.data.preferences.UserVaultPreferences
 import com.example.data.repository.DeviceBatteryHealth
 import com.example.data.repository.PaperFlowRepository
+import com.example.data.repository.VoiceOrganizationSummary
+import com.google.firebase.ai.Chat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,9 +35,11 @@ import kotlinx.coroutines.launch
 
 enum class PaperFlowTab {
     SANCTUARY,
+    TASKS,
     GALLERY,
     NOTES,
     PASSWORDS,
+    ASSISTANT,
     SEARCH,
     SETTINGS
 }
@@ -75,6 +83,37 @@ data class GallerySyncUiState(
     val lastSyncSummary: String = ""
 )
 
+data class VoiceCaptureUiState(
+    val isProcessing: Boolean = false,
+    val lastSummary: VoiceOrganizationSummary? = null,
+    val errorMessage: String? = null
+)
+
+data class ChatUiMessage(
+    val id: String,
+    val isUser: Boolean,
+    val text: String,
+    val modelLabel: String = "",
+    val timestampMillis: Long = System.currentTimeMillis()
+)
+
+data class ChatUiState(
+    val selectedModel: GeminiChatModel = GeminiChatModel.HYDROGEN,
+    val selectedRole: GeminiAssistantRole = GeminiAssistantRole.ORGANIZER,
+    val messages: List<ChatUiMessage> = emptyList(),
+    val isGenerating: Boolean = false,
+    val errorMessage: String? = null
+)
+
+data class LiveVoiceUiState(
+    val isConnecting: Boolean = false,
+    val isActive: Boolean = false,
+    val statusMessage: String = "Tap the orb to start a real-time voice session with gemini-3.8-live.",
+    val transcripts: List<LiveTranscriptLine> = emptyList(),
+    val liveActionLogs: List<String> = emptyList(),
+    val errorMessage: String? = null
+)
+
 class PaperFlowViewModel(
     private val repository: PaperFlowRepository,
     private val preferencesManager: PreferencesManager,
@@ -116,6 +155,18 @@ class PaperFlowViewModel(
 
     private val _gallerySyncState = MutableStateFlow(GallerySyncUiState())
     val gallerySyncState: StateFlow<GallerySyncUiState> = _gallerySyncState.asStateFlow()
+
+    private val _voiceCaptureState = MutableStateFlow(VoiceCaptureUiState())
+    val voiceCaptureState: StateFlow<VoiceCaptureUiState> = _voiceCaptureState.asStateFlow()
+
+    private val _chatState = MutableStateFlow(ChatUiState())
+    val chatState: StateFlow<ChatUiState> = _chatState.asStateFlow()
+
+    private val _liveVoiceState = MutableStateFlow(LiveVoiceUiState())
+    val liveVoiceState: StateFlow<LiveVoiceUiState> = _liveVoiceState.asStateFlow()
+
+    private var activeChatSession: Chat? = null
+    private var liveVoiceController: LiveVoiceController? = null
 
     private val _uiBannerMessage = MutableStateFlow<String?>(null)
     val uiBannerMessage: StateFlow<String?> = _uiBannerMessage.asStateFlow()
@@ -957,5 +1008,263 @@ class PaperFlowViewModel(
 
     fun dismissBannerMessage() {
         _uiBannerMessage.value = null
+    }
+
+    // -------------------------------------------------------------------------
+    // Voice Task & Schedule Upload + Google Calendar Sync
+    // -------------------------------------------------------------------------
+    fun processSpokenVoiceUpload(spokenText: String) {
+        val clean = spokenText.trim()
+        if (clean.isBlank() || _voiceCaptureState.value.isProcessing) return
+        viewModelScope.launch {
+            _voiceCaptureState.value = VoiceCaptureUiState(isProcessing = true)
+            try {
+                val summary = repository.processVoiceOrTextAndOrganize(
+                    userId = currentUserId,
+                    spokenText = clean,
+                    preferredModel = _chatState.value.selectedModel
+                )
+                refreshStorageAndBatteryMetrics()
+                _voiceCaptureState.value = VoiceCaptureUiState(
+                    isProcessing = false,
+                    lastSummary = summary
+                )
+                _uiBannerMessage.value = summary.summaryMessage
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _voiceCaptureState.value = VoiceCaptureUiState(
+                    isProcessing = false,
+                    errorMessage = e.localizedMessage ?: "Failed to organize voice upload"
+                )
+                _uiBannerMessage.value = "Voice upload failed: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun clearVoiceCaptureOutcome() {
+        _voiceCaptureState.value = VoiceCaptureUiState()
+    }
+
+    fun createManualTaskAndSync(
+        title: String,
+        dueIsoDate: String,
+        dueTime24h: String,
+        notes: String,
+        priorityHigh: Boolean,
+        syncToCalendar: Boolean
+    ) {
+        if (title.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val (task, syncRes) = repository.saveTaskAndMaybeSyncCalendar(
+                    userId = currentUserId,
+                    title = title,
+                    dueIsoDate = dueIsoDate,
+                    dueTime24h = dueTime24h,
+                    notes = notes,
+                    priorityHigh = priorityHigh,
+                    syncToCalendar = syncToCalendar
+                )
+                refreshStorageAndBatteryMetrics()
+                _uiBannerMessage.value = if (syncRes?.isSynced == true) {
+                    "Added '${task.title}' to To-Do & ${syncRes.calendarDisplayName}."
+                } else {
+                    "Added '${task.title}' to To-Do & Schedule."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiBannerMessage.value = "Could not add task: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun toggleTaskCompleted(entry: VaultEntryEntity) {
+        viewModelScope.launch {
+            repository.toggleTaskCompleted(entry)
+        }
+    }
+
+    fun syncTaskToGoogleCalendarNow(entry: VaultEntryEntity, onFallbackIntentNeeded: (VaultEntryEntity) -> Unit) {
+        viewModelScope.launch {
+            val (_, result) = repository.syncExistingTaskToCalendar(entry)
+            _uiBannerMessage.value = result.statusMessage
+            if (!result.isSynced) {
+                onFallbackIntentNeeded(entry)
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Multi-Turn Gemini Chatbot (4-Carbon / 4-Argon / 4-Hydrogen / 3.1-Flash-Lite)
+    // -------------------------------------------------------------------------
+    fun selectChatModel(model: GeminiChatModel) {
+        if (_chatState.value.selectedModel == model) return
+        _chatState.value = _chatState.value.copy(selectedModel = model, errorMessage = null)
+        activeChatSession = null // Next send rebuilds session on chosen model with systemInstruction
+    }
+
+    fun selectChatRole(role: GeminiAssistantRole) {
+        if (_chatState.value.selectedRole == role) return
+        _chatState.value = _chatState.value.copy(selectedRole = role, errorMessage = null)
+        activeChatSession = null // Re-apply systemInstruction for new role
+    }
+
+    fun clearChatHistory() {
+        activeChatSession = null
+        _chatState.value = _chatState.value.copy(
+            messages = emptyList(),
+            isGenerating = false,
+            errorMessage = null
+        )
+    }
+
+    fun sendChatMessage(rawText: String) {
+        val text = rawText.trim()
+        if (text.isBlank() || _chatState.value.isGenerating) return
+
+        val stateSnapshot = _chatState.value
+        val userMsg = ChatUiMessage(
+            id = "u_${System.currentTimeMillis()}",
+            isUser = true,
+            text = text
+        )
+        _chatState.value = stateSnapshot.copy(
+            messages = stateSnapshot.messages + userMsg,
+            isGenerating = true,
+            errorMessage = null
+        )
+
+        viewModelScope.launch {
+            try {
+                val session = activeChatSession ?: repository.assistantService.createChatSession(
+                    modelChoice = stateSnapshot.selectedModel,
+                    role = stateSnapshot.selectedRole
+                ).also { activeChatSession = it }
+
+                val executor = repository.buildAssistantToolExecutor(currentUserId)
+                val result = repository.assistantService.sendMultiTurnChatMessage(
+                    chat = session,
+                    userMessage = text,
+                    toolExecutor = executor
+                )
+
+                val replyText = result.getOrElse { err ->
+                    // Fallback: if model id unavailable, try Gemini 3.1 Flash Lite or show clear error
+                    "(${stateSnapshot.selectedModel.displayName}): ${err.localizedMessage ?: "Unable to reach Gemini right now."}"
+                }
+
+                val aiMsg = ChatUiMessage(
+                    id = "a_${System.currentTimeMillis()}",
+                    isUser = false,
+                    text = replyText,
+                    modelLabel = "${stateSnapshot.selectedModel.displayName} · ${stateSnapshot.selectedRole.label}"
+                )
+                _chatState.value = _chatState.value.copy(
+                    messages = _chatState.value.messages + aiMsg,
+                    isGenerating = false
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _chatState.value = _chatState.value.copy(
+                    isGenerating = false,
+                    errorMessage = e.localizedMessage ?: "Chat error"
+                )
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Live API Real-Time Voice Conversation (`gemini-3.8-live`)
+    // -------------------------------------------------------------------------
+    fun startLiveVoiceSession() {
+        if (_liveVoiceState.value.isConnecting || _liveVoiceState.value.isActive) return
+        _liveVoiceState.value = LiveVoiceUiState(
+            isConnecting = true,
+            isActive = false,
+            statusMessage = "Connecting to Gemini 3.8 Live…"
+        )
+
+        viewModelScope.launch {
+            val role = _chatState.value.selectedRole
+            val result = repository.connectLiveVoice(
+                role = role,
+                userId = currentUserId,
+                onTranscriptUpdate = { isUser, chunk ->
+                    val currentList = _liveVoiceState.value.transcripts
+                    val last = currentList.lastOrNull()
+                    val updatedList = if (last != null && last.isUser == isUser &&
+                        (System.currentTimeMillis() - last.timestampMillis) < 5_000L
+                    ) {
+                        currentList.dropLast(1) + last.copy(
+                            text = (last.text + " " + chunk).trim(),
+                            timestampMillis = System.currentTimeMillis()
+                        )
+                    } else {
+                        currentList + LiveTranscriptLine(
+                            id = "live_${System.currentTimeMillis()}_${currentList.size}",
+                            isUser = isUser,
+                            text = chunk
+                        )
+                    }
+                    _liveVoiceState.value = _liveVoiceState.value.copy(transcripts = updatedList)
+                },
+                onLiveToolEvent = { actionSummary ->
+                    _liveVoiceState.value = _liveVoiceState.value.copy(
+                        liveActionLogs = _liveVoiceState.value.liveActionLogs + actionSummary
+                    )
+                    _uiBannerMessage.value = actionSummary
+                },
+                onSessionEnded = { errorMsg ->
+                    liveVoiceController = null
+                    _liveVoiceState.value = _liveVoiceState.value.copy(
+                        isConnecting = false,
+                        isActive = false,
+                        statusMessage = errorMsg ?: "Live voice session ended.",
+                        errorMessage = errorMsg
+                    )
+                }
+            )
+
+            if (result.isSuccess) {
+                liveVoiceController = result.getOrNull()
+                _liveVoiceState.value = _liveVoiceState.value.copy(
+                    isConnecting = false,
+                    isActive = true,
+                    statusMessage = "Live with gemini-3.8-live • Speak naturally",
+                    errorMessage = null
+                )
+            } else {
+                val err = result.exceptionOrNull()?.localizedMessage ?: "Unable to connect to gemini-3.8-live"
+                _liveVoiceState.value = _liveVoiceState.value.copy(
+                    isConnecting = false,
+                    isActive = false,
+                    statusMessage = err,
+                    errorMessage = err
+                )
+            }
+        }
+    }
+
+    fun sendLivePromptText(text: String) {
+        liveVoiceController?.sendTextPrompt(text)
+    }
+
+    fun stopLiveVoiceSession() {
+        liveVoiceController?.stop()
+        liveVoiceController = null
+        _liveVoiceState.value = _liveVoiceState.value.copy(
+            isConnecting = false,
+            isActive = false,
+            statusMessage = "Tap the orb to start a real-time voice session with gemini-3.8-live."
+        )
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        liveVoiceController?.stop()
+        liveVoiceController = null
     }
 }
